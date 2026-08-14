@@ -1,0 +1,8 @@
+{
+  "source": "fdovat-cell/buscador-pelpap",
+  "migratedProducts": 2339,
+  "sourceImages": 2220,
+  "productsWithImages": 1932,
+  "productsWithoutImages": 407,
+  "note": "Migración inicial. Las asociaciones dudosas del PDF se completarán con el importador y su informe de validación."
+}
