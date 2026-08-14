@@ -42,7 +42,7 @@ type Product = {
 };
 
 type OrderLine = { product: Product; quantity: number };
-type SortKey = 'relevance' | 'codigo' | 'descripcion' | 'precio' | 'tipo';
+type SortKey = 'relevance' | 'codigo' | 'descripcion' | 'precio' | 'tipo' | 'marca';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL;
@@ -76,22 +76,22 @@ function getCurrency(product: Product) {
   return String(product.moneda || (product.precio_usd && !product.precio ? 'USD' : 'ARS')).toUpperCase();
 }
 
+function currencyLabel(currency: string) {
+  return currency === 'USD' ? 'USD' : '$';
+}
+
 function getPrice(product: Product, overrides: Record<string, number>) {
   if (overrides[product.codigo] !== undefined) return Number(overrides[product.codigo]) || 0;
   return Number(product.precio ?? product.precio_usd ?? 0) || 0;
 }
 
 function formatPrice(value: number, currency: string) {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: currency === 'USD' ? 'USD' : 'ARS',
-    currencyDisplay: 'code',
-    maximumFractionDigits: 2,
-  }).format(value);
+  const amount = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+  return `${currencyLabel(currency)} ${amount}`;
 }
 
 function compactPrice(value: number, currency: string) {
-  return formatPrice(value, currency).replace('ARS', '').replace('USD', '').trim();
+  return new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
 
 function ProductImage({ product, detail = false, imageIndex = 0 }: { product: Product; detail?: boolean; imageIndex?: number }) {
@@ -219,10 +219,10 @@ function OrderPanel({
         <>
           <div className="order-items">
             {lines.map(({ product, quantity }) => <div className="order-item" key={product.codigo} data-testid={`order-item-${product.codigo}`}>
-              <div><p className="order-item-name">{product.descripcion}</p><span className="order-item-code">{product.codigo} · {compactPrice(getPrice(product, overrides), getCurrency(product))} {getCurrency(product)}</span>
+              <div><p className="order-item-name">{product.descripcion}</p><span className="order-item-code">{product.codigo} · {compactPrice(getPrice(product, overrides), getCurrency(product))} {currencyLabel(getCurrency(product))}</span>
                 <div className="qty-control"><button onClick={() => onQuantity(product.codigo, -1)} aria-label={`Disminuir cantidad de ${product.codigo}`} data-testid={`button-decrease-${product.codigo}`}><Minus size={12} /></button><span className="qty-value">{quantity}</span><button onClick={() => onQuantity(product.codigo, 1)} aria-label={`Aumentar cantidad de ${product.codigo}`} data-testid={`button-increase-${product.codigo}`}><Plus size={12} /></button><button className="remove-item" onClick={() => onRemove(product.codigo)} aria-label={`Quitar ${product.codigo}`} data-testid={`button-remove-${product.codigo}`}><Trash2 size={13} /></button></div>
               </div>
-              <div className="order-item-price">{compactPrice(getPrice(product, overrides) * quantity, getCurrency(product))}<br />{getCurrency(product)} · {quantity} un.</div>
+              <div className="order-item-price">{compactPrice(getPrice(product, overrides) * quantity, getCurrency(product))}<br />{currencyLabel(getCurrency(product))} · {quantity} un.</div>
             </div>)}
           </div>
           <textarea className="order-note" value={note} onChange={(event) => onNoteChange(event.target.value)} placeholder="Nota para el comercio, entrega o seguimiento..." aria-label="Nota del pedido" data-testid="textarea-order-note" />
@@ -315,7 +315,11 @@ function Home() {
         };
         return score(b) - score(a);
       }
-      const value = (product: Product) => sortKey === 'precio' ? getPrice(product, overrides) : normalize(String(product[sortKey] || ''));
+      const value = (product: Product) => {
+        if (sortKey === 'precio') return getPrice(product, overrides);
+        if (sortKey === 'marca') return normalize([...(product.marcas || [])].sort((x, y) => x.localeCompare(y, 'es'))[0] || '');
+        return normalize(String(product[sortKey] || ''));
+      };
       const left = value(a); const right = value(b);
       const comparison = typeof left === 'number' && typeof right === 'number' ? left - right : String(left).localeCompare(String(right), 'es', { numeric: true });
       return ascending ? comparison : -comparison;
@@ -377,7 +381,7 @@ function Home() {
             <label className="select-wrap"><select value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value); setVisibleCount(48); }} aria-label="Filtrar por tipo" data-testid="select-filter-type"><option value="all">Todos los tipos</option>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
             <label className="select-wrap"><select value={brandFilter} onChange={(event) => { setBrandFilter(event.target.value); setVisibleCount(48); }} aria-label="Filtrar por marca" data-testid="select-filter-brand"><option value="all">Todas las marcas</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
             <label className="select-wrap"><select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setVisibleCount(48); }} aria-label="Filtrar por categoría" data-testid="select-filter-category"><option value="all">Todas las categorías</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
-            <label className="select-wrap"><select value={sortKey} onChange={(event) => { setSortKey(event.target.value as SortKey); setVisibleCount(48); }} aria-label="Ordenar catálogo" data-testid="select-sort-products"><option value="relevance">Más relevantes</option><option value="codigo">Código</option><option value="descripcion">Descripción</option><option value="tipo">Tipo</option><option value="precio">Precio</option></select><ChevronDown className="select-chevron" size={15} /></label>
+            <label className="select-wrap"><select value={sortKey} onChange={(event) => { setSortKey(event.target.value as SortKey); setVisibleCount(48); }} aria-label="Ordenar catálogo" data-testid="select-sort-products"><option value="relevance">Más relevantes</option><option value="codigo">Código</option><option value="descripcion">Descripción</option><option value="tipo">Tipo</option><option value="marca">Marca</option><option value="precio">Precio</option></select><ChevronDown className="select-chevron" size={15} /></label>
             <button className="sort-direction" onClick={() => setAscending((current) => !current)} aria-label={ascending ? 'Orden ascendente' : 'Orden descendente'} data-testid="button-toggle-sort"><ArrowUpDown size={15} /> {ascending ? <ArrowUp size={13} /> : <ArrowDown size={13} />}</button>
             <button className="sort-button" onClick={resetFilters} data-testid="button-reset-filters"><RefreshCw size={14} /> Limpiar filtros</button>
             <span className="filter-summary" data-testid="text-filter-summary">{filteredProducts.length.toLocaleString('es-AR')} resultados{orderCount ? ` · ${orderCount} en nota` : ''}</span>
@@ -386,7 +390,7 @@ function Home() {
         <div className="content-layout">
           <section className="catalog-panel" aria-labelledby="catalog-title">
             <div className="list-header"><h2 className="list-title" id="catalog-title">Catálogo de artículos</h2><span className="list-hint">Mostrando {visibleProducts.length} de {filteredProducts.length}</span></div>
-            {loading ? <SkeletonGrid /> : loadError ? <div className="state-card" data-testid="error-products"><div className="error-mark"><AlertCircle size={22} /></div><h2>No pudimos cargar el catálogo</h2><p>{loadError} Revisá que los datos estén disponibles e intentá nuevamente.</p><button className="secondary-button" onClick={() => void loadCatalog()} data-testid="button-retry-products"><RefreshCw size={14} /> Reintentar</button></div> : filteredProducts.length === 0 ? <div className="state-card" data-testid="empty-products"><div className="error-mark"><PackageOpen size={22} /></div><h2>No encontramos artículos</h2><p>Probá con otro código, marca o descripción. También podés quitar los filtros.</p><button className="secondary-button" onClick={resetFilters} data-testid="button-reset-empty"><RefreshCw size={14} /> Restablecer filtros</button></div> : <><div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }} key={product.codigo} data-testid={`card-product-${product.codigo}`}><div className="product-image"><ProductImage product={product} /><span className="product-code">{product.codigo}</span></div><div className="card-body"><div className="product-type">{product.tipo || 'Sin tipo'}</div><div className="product-name">{product.descripcion}</div><div className="card-footer"><div className="product-price">{compactPrice(getPrice(product, overrides), getCurrency(product))}<span className="currency">{getCurrency(product)}</span></div><button className={`add-button ${order[product.codigo] ? 'added' : ''}`} onClick={() => addToOrder(product)} aria-label={`Agregar ${product.codigo} a la nota`} data-testid={`button-add-${product.codigo}`}>{order[product.codigo] ? <Check size={14} /> : <Plus size={14} />}<span>{order[product.codigo] ? 'Agregado' : 'Agregar'}</span></button></div><button className="details-button" onClick={() => setSelected(product)} data-testid={`button-detail-${product.codigo}`}>Ver ficha completa</button></div></article>)}</div>{visibleCount < filteredProducts.length && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}><button className="secondary-button" onClick={() => setVisibleCount((count) => count + 48)} data-testid="button-load-more">Cargar 48 más</button></div>}</>}
+            {loading ? <SkeletonGrid /> : loadError ? <div className="state-card" data-testid="error-products"><div className="error-mark"><AlertCircle size={22} /></div><h2>No pudimos cargar el catálogo</h2><p>{loadError} Revisá que los datos estén disponibles e intentá nuevamente.</p><button className="secondary-button" onClick={() => void loadCatalog()} data-testid="button-retry-products"><RefreshCw size={14} /> Reintentar</button></div> : filteredProducts.length === 0 ? <div className="state-card" data-testid="empty-products"><div className="error-mark"><PackageOpen size={22} /></div><h2>No encontramos artículos</h2><p>Probá con otro código, marca o descripción. También podés quitar los filtros.</p><button className="secondary-button" onClick={resetFilters} data-testid="button-reset-empty"><RefreshCw size={14} /> Restablecer filtros</button></div> : <><div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }} key={product.codigo} data-testid={`card-product-${product.codigo}`}><div className="product-image"><ProductImage product={product} /><span className="product-code">{product.codigo}</span></div><div className="card-body"><div className="product-type">{product.tipo || 'Sin tipo'}</div><div className="product-name">{product.descripcion}</div><div className="card-footer"><div className="product-price">{compactPrice(getPrice(product, overrides), getCurrency(product))}<span className="currency">{currencyLabel(getCurrency(product))}</span></div><button className={`add-button ${order[product.codigo] ? 'added' : ''}`} onClick={() => addToOrder(product)} aria-label={`Agregar ${product.codigo} a la nota`} data-testid={`button-add-${product.codigo}`}>{order[product.codigo] ? <Check size={14} /> : <Plus size={14} />}<span>{order[product.codigo] ? 'Agregado' : 'Agregar'}</span></button></div><button className="details-button" onClick={() => setSelected(product)} data-testid={`button-detail-${product.codigo}`}>Ver ficha completa</button></div></article>)}</div>{visibleCount < filteredProducts.length && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}><button className="secondary-button" onClick={() => setVisibleCount((count) => count + 48)} data-testid="button-load-more">Cargar 48 más</button></div>}</>}
           </section>
           <OrderPanel lines={lines} note={note} overrides={overrides} onNoteChange={setNote} onQuantity={changeQuantity} onRemove={removeFromOrder} onClear={clearOrder} onDownload={downloadOrder} onCopy={copyOrder} />
         </div>
