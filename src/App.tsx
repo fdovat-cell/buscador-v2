@@ -10,6 +10,7 @@ import {
   Copy,
   Download,
   ImageOff,
+  MessageCircle,
   Minus,
   PackageOpen,
   Pencil,
@@ -194,6 +195,7 @@ function OrderPanel({
   onClear,
   onDownload,
   onCopy,
+  onWhatsApp,
 }: {
   lines: OrderLine[];
   note: string;
@@ -204,6 +206,7 @@ function OrderPanel({
   onClear: () => void;
   onDownload: () => void;
   onCopy: () => void;
+  onWhatsApp: () => void;
 }) {
   const ars = lines.filter((line) => getCurrency(line.product) !== 'USD').reduce((sum, line) => sum + getPrice(line.product, overrides) * line.quantity, 0);
   const usd = lines.filter((line) => getCurrency(line.product) === 'USD').reduce((sum, line) => sum + getPrice(line.product, overrides) * line.quantity, 0);
@@ -228,6 +231,7 @@ function OrderPanel({
           <textarea className="order-note" value={note} onChange={(event) => onNoteChange(event.target.value)} placeholder="Nota para el comercio, entrega o seguimiento..." aria-label="Nota del pedido" data-testid="textarea-order-note" />
           <div className="order-total"><span className="total-label">Total estimado</span>{totals.length > 1 ? <span className="mixed-total">{totals.join(' + ')}</span> : <span className="total-value">{totals[0] || '—'}</span>}</div>
           <div className="order-actions"><button onClick={onClear} data-testid="button-clear-order">Limpiar</button><button onClick={onCopy} data-testid="button-copy-order-panel"><Copy size={13} /> Copiar</button><button className="download-button" onClick={onDownload} data-testid="button-download-order"><Download size={14} /> Descargar CSV</button></div>
+          <button className="whatsapp-button" onClick={onWhatsApp} data-testid="button-whatsapp-order" style={{ width: '100%', marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#25D366', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 14px', fontWeight: 600, cursor: 'pointer' }}><MessageCircle size={16} /> Enviar por WhatsApp</button>
         </>
       )}
     </aside>
@@ -345,6 +349,11 @@ function Home() {
   const savePrice = (product: Product, value: number) => { setOverrides((current) => ({ ...current, [product.codigo]: value })); setOrder((current) => current[product.codigo] ? { ...current, [product.codigo]: { ...current[product.codigo], product } } : current); notify(`Precio local guardado para ${product.codigo}`); };
 
   const orderText = () => ['NOTA DE PEDIDO', ...lines.map(({ product, quantity }) => `${product.codigo} · ${quantity} x ${product.descripcion}`), note ? `Nota: ${note}` : ''].filter(Boolean).join('\n');
+  const sendWhatsApp = () => {
+    if (!lines.length) return;
+    const url = `https://wa.me/59896190002?text=${encodeURIComponent(orderText())}`;
+    window.open(url, '_blank');
+  };
   const copyOrder = async () => {
     if (!lines.length) return;
     const text = orderText();
@@ -366,7 +375,7 @@ function Home() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand" data-testid="brand-pelpap"><span className="brand-mark">P</span><span className="brand-name">pelpap</span><span className="brand-sub">buscador / v2</span></div>
+        <div className="brand" data-testid="brand-pelpap"><span className="brand-mark">P</span><span className="brand-name">Pel Sas</span><span className="brand-sub">buscador / v2</span></div>
         <div className="topbar-actions"><span className="status-pill"><span className="status-dot" /> Catálogo local</span><span className="avatar">VD</span></div>
       </header>
       {!storageAvailable && <div className="storage-notice" role="status"><AlertCircle size={15} /><span>La vista previa bloquea el guardado local por ahora. El catálogo funciona normalmente; los pedidos y precios se conservarán al abrir la V2 en un navegador con almacenamiento habilitado.</span></div>}
@@ -391,7 +400,7 @@ function Home() {
             <div className="list-header"><h2 className="list-title" id="catalog-title">Catálogo de artículos</h2><span className="list-hint">Mostrando {visibleProducts.length} de {filteredProducts.length}</span></div>
             {loading ? <SkeletonGrid /> : loadError ? <div className="state-card" data-testid="error-products"><div className="error-mark"><AlertCircle size={22} /></div><h2>No pudimos cargar el catálogo</h2><p>{loadError} Revisá que los datos estén disponibles e intentá nuevamente.</p><button className="secondary-button" onClick={() => void loadCatalog()} data-testid="button-retry-products"><RefreshCw size={14} /> Reintentar</button></div> : filteredProducts.length === 0 ? <div className="state-card" data-testid="empty-products"><div className="error-mark"><PackageOpen size={22} /></div><h2>No encontramos artículos</h2><p>Probá con otro código, marca o descripción. También podés quitar los filtros.</p><button className="secondary-button" onClick={resetFilters} data-testid="button-reset-empty"><RefreshCw size={14} /> Restablecer filtros</button></div> : <><div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }} key={product.codigo} data-testid={`card-product-${product.codigo}`}><div className="product-image"><ProductImage product={product} /><span className="product-code">{product.codigo}</span></div><div className="card-body"><div className="product-type">{product.tipo || 'Sin tipo'}</div><div className="product-name">{product.descripcion}</div><div className="card-footer"><div className="product-price">{compactPrice(getPrice(product, overrides), getCurrency(product))}<span className="currency">{currencyLabel(getCurrency(product))}</span></div><button className={`add-button ${order[product.codigo] ? 'added' : ''}`} onClick={() => addToOrder(product)} aria-label={`Agregar ${product.codigo} a la nota`} data-testid={`button-add-${product.codigo}`}>{order[product.codigo] ? <Check size={14} /> : <Plus size={14} />}<span>{order[product.codigo] ? 'Agregado' : 'Agregar'}</span></button></div><button className="details-button" onClick={() => setSelected(product)} data-testid={`button-detail-${product.codigo}`}>Ver ficha completa</button></div></article>)}</div>{visibleCount < filteredProducts.length && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}><button className="secondary-button" onClick={() => setVisibleCount((count) => count + 48)} data-testid="button-load-more">Cargar 48 más</button></div>}</>}
           </section>
-          <OrderPanel lines={lines} note={note} overrides={overrides} onNoteChange={setNote} onQuantity={changeQuantity} onRemove={removeFromOrder} onClear={clearOrder} onDownload={downloadOrder} onCopy={copyOrder} />
+          <OrderPanel lines={lines} note={note} overrides={overrides} onNoteChange={setNote} onQuantity={changeQuantity} onRemove={removeFromOrder} onClear={clearOrder} onDownload={downloadOrder} onCopy={copyOrder} onWhatsApp={sendWhatsApp} />
         </div>
       </main>
       {selected && <ProductDetail product={selected} price={getPrice(selected, overrides)} onClose={() => setSelected(null)} onAdd={(product) => { addToOrder(product); setSelected(null); }} onSavePrice={savePrice} />}
