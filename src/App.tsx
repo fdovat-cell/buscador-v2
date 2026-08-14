@@ -348,7 +348,18 @@ function Home() {
   const clearOrder = () => { if (window.confirm('¿Querés limpiar la nota de pedido?')) { setOrder({}); setNote(''); notify('Nota de pedido limpia'); } };
   const savePrice = (product: Product, value: number) => { setOverrides((current) => ({ ...current, [product.codigo]: value })); setOrder((current) => current[product.codigo] ? { ...current, [product.codigo]: { ...current[product.codigo], product } } : current); notify(`Precio local guardado para ${product.codigo}`); };
 
-  const orderText = () => ['NOTA DE PEDIDO', ...lines.map(({ product, quantity }) => `${product.codigo} · ${quantity} x ${product.descripcion}`), note ? `Nota: ${note}` : ''].filter(Boolean).join('\n');
+  const orderText = () => {
+    const itemLines = lines.map(({ product, quantity }) => {
+      const unitPrice = getPrice(product, overrides);
+      const subtotal = unitPrice * quantity;
+      const currency = currencyLabel(getCurrency(product));
+      return `${product.codigo} · ${quantity} x ${product.descripcion} · ${currency} ${compactPrice(unitPrice, getCurrency(product))} c/u · Subtotal: ${currency} ${compactPrice(subtotal, getCurrency(product))}`;
+    });
+    const arsTotal = lines.filter((line) => getCurrency(line.product) !== 'USD').reduce((sum, line) => sum + getPrice(line.product, overrides) * line.quantity, 0);
+    const usdTotal = lines.filter((line) => getCurrency(line.product) === 'USD').reduce((sum, line) => sum + getPrice(line.product, overrides) * line.quantity, 0);
+    const totalLines = [arsTotal > 0 ? `Total: $ ${compactPrice(arsTotal, 'ARS')}` : '', usdTotal > 0 ? `Total USD: USD ${compactPrice(usdTotal, 'USD')}` : ''].filter(Boolean);
+    return ['NOTA DE PEDIDO', ...itemLines, ...totalLines, note ? `Nota: ${note}` : ''].filter(Boolean).join('\n');
+  };
   const sendWhatsApp = () => {
     if (!lines.length) return;
     const url = `https://wa.me/59896190002?text=${encodeURIComponent(orderText())}`;
