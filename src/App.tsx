@@ -372,7 +372,6 @@ function Home() {
       {!storageAvailable && <div className="storage-notice" role="status"><AlertCircle size={15} /><span>La vista previa bloquea el guardado local por ahora. El catálogo funciona normalmente; los pedidos y precios se conservarán al abrir la V2 en un navegador con almacenamiento habilitado.</span></div>}
       <main className="main">
         <div className="intro">
-          <div><p className="eyebrow">Herramienta de ventas directas</p><h1>Encontrá el artículo.<br /><span className="hero-accent">Cerrá la visita.</span></h1><p className="intro-copy">Catálogo completo, precios de lista y tu nota de pedido en un solo lugar. Todo queda guardado en este dispositivo.</p></div>
           <div className="catalog-stats"><div className="stat"><span className="stat-value" data-testid="text-product-count">{products.length ? products.length.toLocaleString('es-AR') : '—'}</span><span className="stat-label">artículos</span></div><div className="stat"><span className="stat-value">{imageCount ? imageCount.toLocaleString('es-AR') : '—'}</span><span className="stat-label">con foto</span></div></div>
         </div>
         <section className="toolbar" aria-label="Filtros del catálogo">
