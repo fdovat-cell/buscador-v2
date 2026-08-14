@@ -312,7 +312,10 @@ function Home() {
     });
     return matching.sort((a, b) => {
       if (sortKey === 'relevance') {
-        if (!query) return 0;
+        if (!query) {
+          const comparison = normalize(a.descripcion || '').localeCompare(normalize(b.descripcion || ''), 'es', { numeric: true });
+          return ascending ? comparison : -comparison;
+        }
         const score = (product: Product) => {
           const fields = [product.codigo, product.descripcion, ...(product.marcas || [])].map((field) => normalize(field || ''));
           return fields.reduce((sum, field, index) => sum + (field === query ? 100 - index * 5 : field.startsWith(query) ? 50 - index * 3 : field.includes(query) ? 10 - index : 0), 0);
@@ -400,8 +403,11 @@ function Home() {
             <label className="select-wrap"><select value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value); setVisibleCount(48); }} aria-label="Filtrar por tipo" data-testid="select-filter-type"><option value="all">Todos los tipos</option>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
             <label className="select-wrap"><select value={brandFilter} onChange={(event) => { setBrandFilter(event.target.value); setVisibleCount(48); }} aria-label="Filtrar por marca" data-testid="select-filter-brand"><option value="all">Todas las marcas</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
             <label className="select-wrap"><select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setVisibleCount(48); }} aria-label="Filtrar por categoría" data-testid="select-filter-category"><option value="all">Todas las categorías</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
-            <label className="select-wrap"><select value={sortKey} onChange={(event) => { setSortKey(event.target.value as SortKey); setVisibleCount(48); }} aria-label="Ordenar catálogo" data-testid="select-sort-products"><option value="relevance">Más relevantes</option><option value="codigo">Código</option><option value="descripcion">Descripción</option><option value="tipo">Tipo</option><option value="marca">Marca</option><option value="precio">Precio</option></select><ChevronDown className="select-chevron" size={15} /></label>
-            <button className="sort-direction" onClick={() => setAscending((current) => !current)} aria-label={ascending ? 'Orden ascendente' : 'Orden descendente'} data-testid="button-toggle-sort"><ArrowUpDown size={15} /> {ascending ? <ArrowUp size={13} /> : <ArrowDown size={13} />}</button>
+            <div className="sort-control" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: 'hsl(213 11% 46%)', whiteSpace: 'nowrap' }}>Ordenar por:</span>
+              <label className="select-wrap" style={{ minWidth: 150 }}><select value={sortKey} onChange={(event) => { setSortKey(event.target.value as SortKey); setVisibleCount(48); }} aria-label="Ordenar catálogo" data-testid="select-sort-products"><option value="relevance">Relevancia / Nombre</option><option value="codigo">Código</option><option value="descripcion">Nombre (A-Z)</option><option value="tipo">Tipo</option><option value="marca">Marca</option><option value="precio">Precio</option></select><ChevronDown className="select-chevron" size={15} /></label>
+              <button className="sort-direction" onClick={() => setAscending((current) => !current)} aria-label={ascending ? 'Orden ascendente' : 'Orden descendente'} data-testid="button-toggle-sort"><ArrowUpDown size={15} /> {ascending ? <ArrowUp size={13} /> : <ArrowDown size={13} />}</button>
+            </div>
             <button className="sort-button" onClick={resetFilters} data-testid="button-reset-filters"><RefreshCw size={14} /> Limpiar filtros</button>
             <span className="filter-summary" data-testid="text-filter-summary">{filteredProducts.length.toLocaleString('es-AR')} resultados{orderCount ? ` · ${orderCount} en nota` : ''}</span>
           </div>
