@@ -117,15 +117,8 @@
       </div>
 
       <div id="tab-categorias" style="display:none;">
-        <p class="small">Elegí qué campo querés ordenar. Tildá una o varias categorías y fusionalas en un solo nombre, o vacialas para sacarles la categoría a esos productos.</p>
+        <p class="small">Tildá una o varias categorías y fusionalas en un solo nombre, o vacialas para sacarles la categoría a esos productos.</p>
         <div class="row" style="align-items:center;">
-          <div style="max-width:220px;">
-            <label>Campo a gestionar</label>
-            <select id="cat-field" onchange="renderCategoryManager()">
-              <option value="tipo">Tipo</option>
-              <option value="categoria_raw">Categoría</option>
-            </select>
-          </div>
           <div style="flex:1;"><label>Buscar categoría</label><input type="text" id="cat-search" placeholder="Filtrar por nombre..." oninput="renderCategoryManager()" /></div>
         </div>
         <div style="overflow:auto;max-height:45vh;margin-top:10px;border:1px solid var(--border);border-radius:8px;">
@@ -278,7 +271,7 @@ function renderTable(){
     const isActive = p.activo !== false;
     if(filterActivo === 'active' && !isActive) return;
     if(filterActivo === 'inactive' && isActive) return;
-    const haystack = normalize(p.codigo + ' ' + p.descripcion + ' ' + (p.marcas||[]).join(' ') + ' ' + (p.tipo||'') + ' ' + (p.categoria_raw||''));
+    const haystack = normalize(p.codigo + ' ' + p.descripcion + ' ' + (p.marcas||[]).join(' ') + ' ' + (p.categoria||''));
     if(q && !haystack.includes(q)) return;
     shown++;
     if(shown > 300) return; // límite de render para no trabar el navegador
@@ -318,7 +311,7 @@ function switchTab(tab){
 
 // ---- Category manager ----
 function renderCategoryManager(){
-  const field = document.getElementById('cat-field').value;
+  const field = 'categoria';
   const q = normalize(document.getElementById('cat-search').value);
   const counts = {};
   products.forEach(p => {
@@ -385,7 +378,7 @@ function getSelectedCategories(){
 
 function updateCatSelectedCount(){
   const selected = getSelectedCategories();
-  const field = document.getElementById('cat-field').value;
+  const field = 'categoria';
   const affected = products.filter(p => selected.includes((p[field]||'').toString().trim() || '(sin categoría)')).length;
   document.getElementById('cat-selected-count').textContent = selected.length
     ? `${selected.length} categoría(s) tildada(s) · ${affected} producto(s) afectados`
@@ -393,7 +386,7 @@ function updateCatSelectedCount(){
 }
 
 function applyCategoryMerge(){
-  const field = document.getElementById('cat-field').value;
+  const field = 'categoria';
   const selected = getSelectedCategories();
   const newName = document.getElementById('cat-new-name').value.trim();
   if(!selected.length){ alert('Tildá al menos una categoría.'); return; }
@@ -414,7 +407,7 @@ function applyCategoryMerge(){
 }
 
 function applyCategoryClear(){
-  const field = document.getElementById('cat-field').value;
+  const field = 'categoria';
   const selected = getSelectedCategories();
   if(!selected.length){ alert('Tildá al menos una categoría.'); return; }
   if(!confirm(`¿Vaciar el campo "${field}" en los productos de ${selected.length} categoría(s) tildada(s)?`)) return;
@@ -445,7 +438,7 @@ function openProductForm(idx){
   const isNew = idx === null;
   const p = isNew ? {
     codigo:'', descripcion:'', precio:'', precio_usd:null, precio_unitario:'',
-    categoria_raw:'', tipo:'', marcas:[], modalidad:'', imagenes:[], moneda:'ARS', activo:true
+    categoria:'', marcas:[], modalidad:'', imagenes:[], moneda:'ARS', activo:true
   } : products[idx];
 
   const root = document.getElementById('modal-root');
@@ -463,25 +456,19 @@ function openProductForm(idx){
         <div><label>Moneda</label><select id="f-moneda"><option value="ARS" ${p.moneda!=='USD'?'selected':''}>ARS ($)</option><option value="USD" ${p.moneda==='USD'?'selected':''}>USD</option></select></div>
       </div>
       <div class="row">
-        <div><label>Tipo</label>
-          <select id="f-tipo" onchange="handleCategorySelect('f-tipo')">
-            <option value="">— Sin tipo —</option>
-            ${getDistinctValues('tipo').map(v => `<option value="${escapeAttr(v)}" ${v===(p.tipo||'')?'selected':''}>${v}</option>`).join('')}
-            <option value="__nuevo__" ${!getDistinctValues('tipo').includes(p.tipo||'') && p.tipo ? 'selected' : ''}>+ Nuevo tipo...</option>
+        <div>
+          <label>Categoría</label>
+          <select id="f-categoria" onchange="handleCategorySelect('f-categoria')">
+            <option value="">— Sin categoría —</option>
+            ${getDistinctValues('categoria').map(v => `<option value="${escapeAttr(v)}" ${v===(p.categoria||'')?'selected':''}>${v}</option>`).join('')}
+            <option value="__nuevo__" ${!getDistinctValues('categoria').includes(p.categoria||'') && p.categoria ? 'selected' : ''}>+ Nueva categoría...</option>
           </select>
-          <input id="f-tipo-nuevo" placeholder="Escribí el nuevo tipo" value="${!getDistinctValues('tipo').includes(p.tipo||'') ? escapeAttr(p.tipo||'') : ''}" style="margin-top:6px;display:${!getDistinctValues('tipo').includes(p.tipo||'') && p.tipo ? 'block':'none'};" />
+          <input id="f-categoria-nuevo" placeholder="Escribí la nueva categoría" value="${!getDistinctValues('categoria').includes(p.categoria||'') ? escapeAttr(p.categoria||'') : ''}" style="margin-top:6px;display:${!getDistinctValues('categoria').includes(p.categoria||'') && p.categoria ? 'block':'none'};" />
         </div>
         <div><label>Marca(s), separadas por coma</label><input id="f-marcas" value="${escapeAttr((p.marcas||[]).join(', '))}" /></div>
       </div>
       <label>Modalidad / presentación</label>
       <input id="f-modalidad" value="${escapeAttr(p.modalidad||'')}" />
-      <label>Categoría (raw)</label>
-      <select id="f-categoria" onchange="handleCategorySelect('f-categoria')">
-        <option value="">— Sin categoría —</option>
-        ${getDistinctValues('categoria_raw').map(v => `<option value="${escapeAttr(v)}" ${v===(p.categoria_raw||'')?'selected':''}>${v}</option>`).join('')}
-        <option value="__nuevo__" ${!getDistinctValues('categoria_raw').includes(p.categoria_raw||'') && p.categoria_raw ? 'selected' : ''}>+ Nueva categoría...</option>
-      </select>
-      <input id="f-categoria-nuevo" placeholder="Escribí la nueva categoría" value="${!getDistinctValues('categoria_raw').includes(p.categoria_raw||'') ? escapeAttr(p.categoria_raw||'') : ''}" style="margin-top:6px;display:${!getDistinctValues('categoria_raw').includes(p.categoria_raw||'') && p.categoria_raw ? 'block':'none'};" />
       <label>Foto</label>
       <div class="imgpick">
         ${(p.imagenes && p.imagenes[0]) ? `<img class="thumb" src="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/public${p.imagenes[0]}" style="width:50px;height:50px;">` : '<span class="small">Sin foto</span>'}
@@ -533,8 +520,7 @@ async function saveProductForm(idx){
     descripcion: document.getElementById('f-descripcion').value.trim(),
     precio: precioVal === '' ? null : Number(precioVal),
     precio_usd: null,
-    categoria_raw: getCategoryFieldValue('f-categoria'),
-    tipo: getCategoryFieldValue('f-tipo'),
+    categoria: getCategoryFieldValue('f-categoria'),
     marcas,
     modalidad: document.getElementById('f-modalidad').value.trim(),
     precio_unitario: precioUnitVal === '' ? null : Number(precioUnitVal),
