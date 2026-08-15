@@ -137,7 +137,9 @@
         <div class="card" style="margin-top:14px;background:#faf8f3;">
           <label>Nuevo nombre para las categorías tildadas (fusionarlas todas en esta)</label>
           <div class="row">
-            <div><input type="text" id="cat-new-name" placeholder="Ej: Sellos" /></div>
+            <div><select id="cat-new-name-select" onchange="handleCatNewNameSelect()"></select>
+              <input type="text" id="cat-new-name" placeholder="Escribí el nombre nuevo" style="margin-top:6px;display:none;" />
+            </div>
             <div style="flex:0 0 auto;"><button class="btn-stamp" onclick="applyCategoryMerge()">Fusionar / renombrar seleccionadas</button></div>
             <div style="flex:0 0 auto;"><button class="btn-danger" onclick="applyCategoryClear()">Vaciar categoría (dejar sin asignar)</button></div>
           </div>
@@ -342,6 +344,28 @@ function renderCategoryManager(){
   document.querySelectorAll('.cat-checkbox').forEach(cb => cb.addEventListener('change', updateCatSelectedCount));
   document.getElementById('cat-select-all').checked = false;
   updateCatSelectedCount();
+
+  // selector desplegable con categorías vigentes para fusionar/renombrar
+  const select = document.getElementById('cat-new-name-select');
+  const values = getDistinctValues(field);
+  select.innerHTML = '<option value="">— Elegí una categoría vigente —</option>'
+    + values.map(v => `<option value="${escapeAttr(v)}">${v}</option>`).join('')
+    + '<option value="__nuevo__">+ Nombre nuevo...</option>';
+  document.getElementById('cat-new-name').value = '';
+  document.getElementById('cat-new-name').style.display = 'none';
+}
+
+function handleCatNewNameSelect(){
+  const select = document.getElementById('cat-new-name-select');
+  const input = document.getElementById('cat-new-name');
+  if(select.value === '__nuevo__'){
+    input.style.display = 'block';
+    input.value = '';
+    input.focus();
+  } else {
+    input.style.display = 'none';
+    input.value = select.value;
+  }
 }
 
 function toggleAllCategories(checked){
