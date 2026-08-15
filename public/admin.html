@@ -270,7 +270,9 @@ function renderTable(){
   const tbody = document.getElementById('table-body');
   tbody.innerHTML = '';
   let shown = 0;
-  products.forEach((p, idx) => {
+  const indexed = products.map((p, idx) => ({ p, idx }));
+  indexed.sort((a, b) => normalize(a.p.descripcion).localeCompare(normalize(b.p.descripcion), 'es', { numeric: true }));
+  indexed.forEach(({ p, idx }) => {
     const isActive = p.activo !== false;
     if(filterActivo === 'active' && !isActive) return;
     if(filterActivo === 'inactive' && isActive) return;
@@ -324,7 +326,7 @@ function renderCategoryManager(){
   });
   const rows = Object.entries(counts)
     .filter(([name]) => !q || normalize(name).includes(q))
-    .sort((a,b) => b[1] - a[1]);
+    .sort((a,b) => normalize(a[0]).localeCompare(normalize(b[0]), 'es', { numeric: true }));
 
   const tbody = document.getElementById('cat-table-body');
   tbody.innerHTML = '';
