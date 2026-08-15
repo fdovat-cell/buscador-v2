@@ -258,6 +258,12 @@ async function loadCatalog(forceFresh){
 
 function normalize(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
 
+function getDistinctValues(field){
+  const set = new Set();
+  products.forEach(p => { const v = (p[field]||'').toString().trim(); if(v) set.add(v); });
+  return Array.from(set).sort((a,b) => a.localeCompare(b,'es'));
+}
+
 function renderTable(){
   const q = normalize(document.getElementById('search-box').value);
   const filterActivo = document.getElementById('filter-activo').value;
@@ -431,13 +437,13 @@ function openProductForm(idx){
         <div><label>Moneda</label><select id="f-moneda"><option value="ARS" ${p.moneda!=='USD'?'selected':''}>ARS ($)</option><option value="USD" ${p.moneda==='USD'?'selected':''}>USD</option></select></div>
       </div>
       <div class="row">
-        <div><label>Tipo</label><input id="f-tipo" value="${escapeAttr(p.tipo||'')}" /></div>
+        <div><label>Tipo</label><input id="f-tipo" value="${escapeAttr(p.tipo||'')}" list="tipo-options" placeholder="Elegí uno existente o escribí uno nuevo" /></div>
         <div><label>Marca(s), separadas por coma</label><input id="f-marcas" value="${escapeAttr((p.marcas||[]).join(', '))}" /></div>
       </div>
       <label>Modalidad / presentación</label>
       <input id="f-modalidad" value="${escapeAttr(p.modalidad||'')}" />
       <label>Categoría (raw)</label>
-      <input id="f-categoria" value="${escapeAttr(p.categoria_raw||'')}" />
+      <input id="f-categoria" value="${escapeAttr(p.categoria_raw||'')}" list="categoria-options" placeholder="Elegí una existente o escribí una nueva" />
       <label>Foto</label>
       <div class="imgpick">
         ${(p.imagenes && p.imagenes[0]) ? `<img class="thumb" src="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/public${p.imagenes[0]}" style="width:50px;height:50px;">` : '<span class="small">Sin foto</span>'}
@@ -452,7 +458,9 @@ function openProductForm(idx){
       </div>
       <p class="small" style="margin-top:10px;">Esto solo actualiza la lista en memoria. Tocá "Guardar todos los cambios en GitHub" para publicarlo de verdad.</p>
     </div>
-  </div>`;
+  </div>
+  <datalist id="tipo-options">${getDistinctValues('tipo').map(v => `<option value="${escapeAttr(v)}">`).join('')}</datalist>
+  <datalist id="categoria-options">${getDistinctValues('categoria_raw').map(v => `<option value="${escapeAttr(v)}">`).join('')}</datalist>`;
 }
 
 function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
