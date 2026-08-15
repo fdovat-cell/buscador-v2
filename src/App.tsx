@@ -39,6 +39,7 @@ type Product = {
   modalidad?: string | null;
   precio_unitario?: number | null;
   imagenes?: string[] | null;
+  proveedor?: number | null;
 };
 
 type OrderLine = { product: Product; quantity: number };
@@ -169,6 +170,7 @@ function ProductDetail({
               <div><div className="detail-field-label">Moneda</div><div className="detail-field-value">{currency}</div></div>
               <div><div className="detail-field-label">Modalidad</div><div className="detail-field-value">{product.modalidad || 'No especificada'}</div></div>
               <div><div className="detail-field-label">Precio unitario</div><div className="detail-field-value">{product.precio_unitario ? formatPrice(product.precio_unitario, currency) : 'No informado'}</div></div>
+              <div><div className="detail-field-label">Proveedor</div><div className="detail-field-value">{product.proveedor != null ? `Proveedor ${product.proveedor}` : 'Sin asignar'}</div></div>
             </div>
             <div className="price-edit">
               <Pencil size={14} color="hsl(213 11% 46%)" />
