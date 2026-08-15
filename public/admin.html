@@ -93,6 +93,7 @@
       <div class="tabs" style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
         <button id="tab-btn-productos" class="btn-primary" onclick="switchTab('productos')">Productos</button>
         <button id="tab-btn-categorias" class="btn-ghost" onclick="switchTab('categorias')">Categorías</button>
+        <button id="tab-btn-proveedores" class="btn-ghost" onclick="switchTab('proveedores')">Proveedores</button>
       </div>
 
       <div id="tab-productos">
@@ -110,7 +111,7 @@
         <div id="load-status" class="status info">Cargando catálogo...</div>
         <div style="overflow:auto;max-height:65vh;">
           <table>
-            <thead><tr><th></th><th>Código</th><th>Descripción</th><th>Marca</th><th>Precio</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th></th><th>Código</th><th>Descripción</th><th>Marca</th><th>Precio</th><th>Prov.</th><th>Estado</th><th></th></tr></thead>
             <tbody id="table-body"></tbody>
           </table>
         </div>
@@ -139,6 +140,29 @@
           <p class="small" id="cat-selected-count" style="margin-top:8px;"></p>
         </div>
         <p class="small">Esto edita en memoria todos los productos de las categorías tildadas. Como siempre, no se publica hasta que apretás "Guardar todos los cambios en GitHub" abajo.</p>
+      </div>
+
+      <div id="tab-proveedores" style="display:none;">
+        <p class="small">Tildá una o varias marcas y asignales un número de proveedor a todos sus productos. Sirve para clasificar en bloque; los que queden sin marca elegida se editan después uno por uno desde "Productos".</p>
+        <div class="row" style="align-items:center;">
+          <div style="flex:1;"><label>Buscar marca</label><input type="text" id="prov-search" placeholder="Filtrar por nombre..." oninput="renderProveedorManager()" /></div>
+        </div>
+        <div style="overflow:auto;max-height:45vh;margin-top:10px;border:1px solid var(--border);border-radius:8px;">
+          <table>
+            <thead><tr><th style="width:30px;"><input type="checkbox" id="prov-select-all" onchange="toggleAllMarcasProv(this.checked)"/></th><th>Marca</th><th>Productos</th><th>Proveedores actuales</th></tr></thead>
+            <tbody id="prov-table-body"></tbody>
+          </table>
+        </div>
+        <div class="card" style="margin-top:14px;background:#faf8f3;">
+          <label>Número de proveedor para las marcas tildadas</label>
+          <div class="row">
+            <div><input type="number" id="prov-new-number" min="1" step="1" placeholder="Ej: 5" /></div>
+            <div style="flex:0 0 auto;"><button class="btn-stamp" onclick="applyProveedorAssign()">Asignar a las marcas tildadas</button></div>
+            <div style="flex:0 0 auto;"><button class="btn-danger" onclick="applyProveedorClear()">Quitar proveedor (dejar sin asignar)</button></div>
+          </div>
+          <p class="small" id="prov-selected-count" style="margin-top:8px;"></p>
+        </div>
+        <p class="small">Esto edita en memoria todos los productos de las marcas tildadas. Como siempre, no se publica hasta que apretás "Guardar todos los cambios en GitHub" abajo.</p>
       </div>
     </div>
 
@@ -299,6 +323,7 @@ function renderTable(){
       <td>${p.descripcion}</td>
       <td>${(p.marcas||[]).join(', ')}</td>
       <td>${p.precio != null ? p.precio : '—'} ${p.moneda==='USD' ? 'USD' : '$'}</td>
+      <td>${p.proveedor != null ? p.proveedor : '—'}</td>
       <td><span class="pill ${isActive?'active':'off'}">${isActive?'Activo':'De baja'}</span></td>
       <td class="actions-col">
         <button class="btn-ghost" onclick="openEditProduct(${idx})">Editar</button>
@@ -320,9 +345,12 @@ function updateDirtyIndicator(){
 function switchTab(tab){
   document.getElementById('tab-productos').style.display = tab === 'productos' ? 'block' : 'none';
   document.getElementById('tab-categorias').style.display = tab === 'categorias' ? 'block' : 'none';
+  document.getElementById('tab-proveedores').style.display = tab === 'proveedores' ? 'block' : 'none';
   document.getElementById('tab-btn-productos').className = tab === 'productos' ? 'btn-primary' : 'btn-ghost';
   document.getElementById('tab-btn-categorias').className = tab === 'categorias' ? 'btn-primary' : 'btn-ghost';
+  document.getElementById('tab-btn-proveedores').className = tab === 'proveedores' ? 'btn-primary' : 'btn-ghost';
   if(tab === 'categorias') renderCategoryManager();
+  if(tab === 'proveedores') renderProveedorManager();
 }
 
 // ---- Category manager ----
@@ -443,6 +471,96 @@ function applyCategoryClear(){
   alert(`Listo: ${affected} producto(s) quedaron sin ese campo. No olvides guardar en GitHub.`);
 }
 
+// ---- Proveedor manager (asignación en bloque por marca) ----
+function renderProveedorManager(){
+  const q = normalize(document.getElementById('prov-search').value);
+  const counts = {}; // marca -> cantidad de productos
+  const proveedoresPorMarca = {}; // marca -> set de proveedores ya presentes en esos productos
+  products.forEach(p => {
+    (p.marcas || []).forEach(marca => {
+      const key = (marca || '').trim() || '(sin marca)';
+      counts[key] = (counts[key] || 0) + 1;
+      if(!proveedoresPorMarca[key]) proveedoresPorMarca[key] = new Set();
+      if(p.proveedor != null) proveedoresPorMarca[key].add(p.proveedor);
+    });
+  });
+  const rows = Object.entries(counts)
+    .filter(([name]) => !q || normalize(name).includes(q))
+    .sort((a,b) => normalize(a[0]).localeCompare(normalize(b[0]), 'es', { numeric: true }));
+
+  const tbody = document.getElementById('prov-table-body');
+  tbody.innerHTML = '';
+  rows.forEach(([name, count]) => {
+    const provs = Array.from(proveedoresPorMarca[name] || []).sort((a,b)=>a-b);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="checkbox" class="prov-checkbox" value="${escapeAttr(name)}"/></td>
+      <td>${name}</td>
+      <td>${count}</td>
+      <td>${provs.length ? provs.join(', ') : '—'}</td>`;
+    tbody.appendChild(tr);
+  });
+  document.querySelectorAll('.prov-checkbox').forEach(cb => cb.addEventListener('change', updateProvSelectedCount));
+  document.getElementById('prov-select-all').checked = false;
+  updateProvSelectedCount();
+  document.getElementById('prov-new-number').value = '';
+}
+
+function toggleAllMarcasProv(checked){
+  document.querySelectorAll('.prov-checkbox').forEach(cb => cb.checked = checked);
+  updateProvSelectedCount();
+}
+
+function getSelectedMarcasProv(){
+  return Array.from(document.querySelectorAll('.prov-checkbox:checked')).map(cb => cb.value);
+}
+
+function updateProvSelectedCount(){
+  const selected = getSelectedMarcasProv();
+  const affected = products.filter(p => (p.marcas||[]).some(m => selected.includes((m||'').trim() || '(sin marca)'))).length;
+  document.getElementById('prov-selected-count').textContent = selected.length
+    ? `${selected.length} marca(s) tildada(s) · ${affected} producto(s) afectados`
+    : 'Ninguna marca tildada.';
+}
+
+function applyProveedorAssign(){
+  const selected = getSelectedMarcasProv();
+  const numVal = document.getElementById('prov-new-number').value;
+  if(!selected.length){ alert('Tildá al menos una marca.'); return; }
+  if(numVal === '' || isNaN(Number(numVal))){ alert('Escribí el número de proveedor.'); return; }
+  const num = Number(numVal);
+  let affected = 0;
+  products.forEach(p => {
+    if((p.marcas||[]).some(m => selected.includes((m||'').trim() || '(sin marca)'))){
+      p.proveedor = num;
+      affected++;
+    }
+  });
+  markDirty();
+  rebuildIndexes();
+  renderProveedorManager();
+  renderTable();
+  alert(`Listo: ${affected} producto(s) quedaron con Proveedor ${num}. No olvides guardar en GitHub.`);
+}
+
+function applyProveedorClear(){
+  const selected = getSelectedMarcasProv();
+  if(!selected.length){ alert('Tildá al menos una marca.'); return; }
+  if(!confirm(`¿Quitar el proveedor a los productos de ${selected.length} marca(s) tildada(s)?`)) return;
+  let affected = 0;
+  products.forEach(p => {
+    if((p.marcas||[]).some(m => selected.includes((m||'').trim() || '(sin marca)'))){
+      p.proveedor = null;
+      affected++;
+    }
+  });
+  markDirty();
+  rebuildIndexes();
+  renderProveedorManager();
+  renderTable();
+  alert(`Listo: ${affected} producto(s) quedaron sin proveedor. No olvides guardar en GitHub.`);
+}
+
 function closeModal(){ document.getElementById('modal-root').innerHTML = ''; }
 
 function openNewProduct(){
@@ -456,7 +574,7 @@ function openProductForm(idx){
   const isNew = idx === null;
   const p = isNew ? {
     codigo:'', descripcion:'', precio:'', precio_usd:null, precio_unitario:'',
-    categoria:'', marcas:[], modalidad:'', imagenes:[], moneda:'ARS', activo:true
+    categoria:'', marcas:[], modalidad:'', imagenes:[], moneda:'ARS', activo:true, proveedor:null
   } : products[idx];
 
   const root = document.getElementById('modal-root');
@@ -485,8 +603,10 @@ function openProductForm(idx){
         </div>
         <div><label>Marca(s), separadas por coma</label><input id="f-marcas" value="${escapeAttr((p.marcas||[]).join(', '))}" /></div>
       </div>
-      <label>Modalidad / presentación</label>
-      <input id="f-modalidad" value="${escapeAttr(p.modalidad||'')}" />
+      <div class="row">
+        <div><label>Modalidad / presentación</label><input id="f-modalidad" value="${escapeAttr(p.modalidad||'')}" /></div>
+        <div><label>Proveedor (nro)</label><input id="f-proveedor" type="number" min="1" step="1" value="${p.proveedor ?? ''}" /></div>
+      </div>
       <label>Foto</label>
       <div class="imgpick">
         ${(p.imagenes && p.imagenes[0]) ? `<img class="thumb" src="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/public${p.imagenes[0]}" style="width:50px;height:50px;">` : '<span class="small">Sin foto</span>'}
@@ -532,6 +652,7 @@ async function saveProductForm(idx){
   const marcas = document.getElementById('f-marcas').value.split(',').map(s=>s.trim()).filter(Boolean);
   const precioVal = document.getElementById('f-precio').value;
   const precioUnitVal = document.getElementById('f-precio-unitario').value;
+  const proveedorVal = document.getElementById('f-proveedor').value;
 
   const newProduct = {
     codigo,
@@ -542,6 +663,7 @@ async function saveProductForm(idx){
     marcas,
     modalidad: document.getElementById('f-modalidad').value.trim(),
     precio_unitario: precioUnitVal === '' ? null : Number(precioUnitVal),
+    proveedor: proveedorVal === '' ? null : Number(proveedorVal),
     imagenes: isNew ? [] : (products[idx].imagenes || []),
     moneda: document.getElementById('f-moneda').value,
     activo: document.getElementById('f-activo').checked,
