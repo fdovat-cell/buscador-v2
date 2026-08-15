@@ -97,7 +97,7 @@
 
       <div id="tab-productos">
         <div class="toolbar">
-          <input type="text" id="search-box" placeholder="Buscar por código, nombre o marca..." oninput="renderTable()" />
+          <input type="text" id="search-box" placeholder="Buscar por código, nombre o marca..." oninput="scheduleRenderTable()" />
           <select id="filter-activo" onchange="renderTable()">
             <option value="all">Todos</option>
             <option value="active">Activos</option>
@@ -242,6 +242,7 @@ async function loadCatalog(forceFresh){
     products = JSON.parse(decoded);
     dirty = false;
     updateDirtyIndicator();
+    rebuildIndexes();
     statusEl.style.display = 'none';
     renderTable();
     if(document.getElementById('tab-categorias').style.display !== 'none') renderCategoryManager();
@@ -259,26 +260,40 @@ function getDistinctValues(field){
   return Array.from(set).sort((a,b) => a.localeCompare(b,'es'));
 }
 
+let sortedProducts = []; // [{p, idx}] cacheado, ordenado por descripción
+let searchIndex = new Map(); // codigo -> texto normalizado para buscar
+let renderTimer = null;
+
+function rebuildIndexes(){
+  sortedProducts = products.map((p, idx) => ({ p, idx }));
+  sortedProducts.sort((a, b) => normalize(a.p.descripcion).localeCompare(normalize(b.p.descripcion), 'es', { numeric: true }));
+  searchIndex = new Map();
+  products.forEach((p) => {
+    searchIndex.set(p.codigo, normalize(p.codigo + ' ' + p.descripcion + ' ' + (p.marcas||[]).join(' ') + ' ' + (p.categoria||'')));
+  });
+}
+
+function scheduleRenderTable(){
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(renderTable, 150);
+}
+
 function renderTable(){
   const q = normalize(document.getElementById('search-box').value);
   const filterActivo = document.getElementById('filter-activo').value;
   const tbody = document.getElementById('table-body');
-  tbody.innerHTML = '';
   let shown = 0;
-  const indexed = products.map((p, idx) => ({ p, idx }));
-  indexed.sort((a, b) => normalize(a.p.descripcion).localeCompare(normalize(b.p.descripcion), 'es', { numeric: true }));
-  indexed.forEach(({ p, idx }) => {
+  const rowsHtml = [];
+  for(const { p, idx } of sortedProducts){
     const isActive = p.activo !== false;
-    if(filterActivo === 'active' && !isActive) return;
-    if(filterActivo === 'inactive' && isActive) return;
-    const haystack = normalize(p.codigo + ' ' + p.descripcion + ' ' + (p.marcas||[]).join(' ') + ' ' + (p.categoria||''));
-    if(q && !haystack.includes(q)) return;
+    if(filterActivo === 'active' && !isActive) continue;
+    if(filterActivo === 'inactive' && isActive) continue;
+    const haystack = searchIndex.get(p.codigo) || '';
+    if(q && !haystack.includes(q)) continue;
     shown++;
-    if(shown > 300) return; // límite de render para no trabar el navegador
-    const tr = document.createElement('tr');
-    tr.className = isActive ? '' : 'inactive';
+    if(shown > 300) continue; // límite de render para no trabar el navegador
     const img = (p.imagenes && p.imagenes[0]) ? `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/public${p.imagenes[0]}` : '';
-    tr.innerHTML = `
+    rowsHtml.push(`<tr class="${isActive ? '' : 'inactive'}">
       <td>${img ? `<img class="thumb" src="${img}" loading="lazy" onerror="this.style.opacity=0.2">` : `<div class="thumb"></div>`}</td>
       <td>${p.codigo}</td>
       <td>${p.descripcion}</td>
@@ -287,9 +302,10 @@ function renderTable(){
       <td><span class="pill ${isActive?'active':'off'}">${isActive?'Activo':'De baja'}</span></td>
       <td class="actions-col">
         <button class="btn-ghost" onclick="openEditProduct(${idx})">Editar</button>
-      </td>`;
-    tbody.appendChild(tr);
-  });
+      </td>
+    </tr>`);
+  }
+  tbody.innerHTML = rowsHtml.join('');
   document.getElementById('count-badge').textContent = `${shown} de ${products.length} productos${shown>300?' (mostrando primeros 300, afiná la búsqueda)':''}`;
 }
 
@@ -400,6 +416,7 @@ function applyCategoryMerge(){
     }
   });
   markDirty();
+  rebuildIndexes();
   document.getElementById('cat-new-name').value = '';
   renderCategoryManager();
   renderTable();
@@ -420,6 +437,7 @@ function applyCategoryClear(){
     }
   });
   markDirty();
+  rebuildIndexes();
   renderCategoryManager();
   renderTable();
   alert(`Listo: ${affected} producto(s) quedaron sin ese campo. No olvides guardar en GitHub.`);
@@ -544,6 +562,7 @@ async function saveProductForm(idx){
     products[idx] = newProduct;
   }
   markDirty();
+  rebuildIndexes();
   closeModal();
   renderTable();
 }
@@ -561,6 +580,7 @@ function deleteProduct(idx){
   if(!confirm('¿Eliminar este producto de la lista? (Se puede en cambio marcar como "de baja" con el check de activo, así lo conservás en el historial)')) return;
   products.splice(idx, 1);
   markDirty();
+  rebuildIndexes();
   closeModal();
   renderTable();
 }
