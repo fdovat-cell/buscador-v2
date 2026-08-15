@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin · Pel Sas buscador</title>
+<meta name="robots" content="noindex, nofollow" />
+<style>
+  :root{
+    --graphite:#1f2933; --petrol:#0f3d3e; --stamp:#b23b2e;
+    --bg:#f4f1ea; --card:#ffffff; --border:#e2ddd0; --muted:#6b7280;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--graphite);}
+  header{background:var(--graphite);color:#fff;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+  header h1{font-size:16px;margin:0;font-weight:800;letter-spacing:.02em;}
+  header .sub{font-size:11px;opacity:.7;}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:16px;}
+  .login-box{max-width:360px;margin:60px auto;}
+  input,select,textarea{font-family:inherit;font-size:14px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;width:100%;background:#fff;color:var(--graphite);}
+  label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px;margin-top:10px;}
+  button{cursor:pointer;border:none;border-radius:8px;padding:10px 14px;font-weight:700;font-size:13px;font-family:inherit;}
+  .btn-primary{background:var(--petrol);color:#fff;}
+  .btn-primary:hover{opacity:.9;}
+  .btn-stamp{background:var(--stamp);color:#fff;}
+  .btn-ghost{background:#eee;color:var(--graphite);}
+  .btn-danger{background:#fff;color:var(--stamp);border:1px solid var(--stamp);}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
+  .row>div{flex:1;min-width:140px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:middle;}
+  th{font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.03em;}
+  tr.inactive{opacity:.45;}
+  .thumb{width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--border);background:#f2f2f2;}
+  .pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:#eee;color:var(--muted);}
+  .pill.active{background:#e4f4ea;color:#177245;}
+  .pill.off{background:#fbe6e2;color:var(--stamp);}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
+  .toolbar input[type=text]{flex:1;min-width:180px;}
+  .modal-bg{position:fixed;inset:0;background:rgba(20,20,20,.5);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto;z-index:50;}
+  .modal{background:#fff;border-radius:12px;padding:20px;max-width:480px;width:100%;margin-top:20px;}
+  .modal h2{margin-top:0;font-size:16px;}
+  .status{font-size:12px;padding:8px 10px;border-radius:8px;margin-bottom:10px;}
+  .status.ok{background:#e4f4ea;color:#177245;}
+  .status.err{background:#fbe6e2;color:var(--stamp);}
+  .status.info{background:#eef2f6;color:#334;}
+  .small{font-size:11px;color:var(--muted);}
+  .actions-col{white-space:nowrap;}
+  .actions-col button{padding:5px 8px;font-size:11px;margin-right:4px;}
+  .count-badge{font-size:11px;color:var(--muted);}
+  a.link{color:var(--petrol);}
+  .imgpick{display:flex;align-items:center;gap:8px;}
+</style>
+</head>
+<body>
+
+<div id="login-screen" class="wrap" style="display:none;">
+  <div class="card login-box">
+    <h2 style="margin-top:0;">Admin Pel Sas</h2>
+    <p class="small">Ingresá la contraseña. En esta PC no se te va a volver a pedir.</p>
+    <input type="password" id="pw-input" placeholder="Contraseña" autocomplete="off" />
+    <button class="btn-primary" style="margin-top:12px;width:100%;" onclick="tryLogin()">Entrar</button>
+    <div id="login-err" class="status err" style="display:none;margin-top:10px;">Contraseña incorrecta</div>
+  </div>
+</div>
+
+<div id="app-screen" style="display:none;">
+  <header>
+    <div>
+      <h1>Admin · Pel Sas buscador</h1>
+      <div class="sub">Editar precios, altas, bajas y fotos — se guarda directo en GitHub</div>
+    </div>
+    <div>
+      <button class="btn-ghost" onclick="logout()">Salir</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+
+    <div class="card" id="token-card">
+      <label>Token de GitHub (Personal Access Token, con permiso "repo")</label>
+      <div class="row">
+        <div><input type="password" id="gh-token" placeholder="ghp_xxxxxxxxxxxx" /></div>
+        <div style="flex:0 0 auto;"><button class="btn-primary" onclick="saveToken()">Guardar token</button></div>
+      </div>
+      <p class="small">Se guarda solo en este navegador (nunca se envía a ningún lado más que a GitHub). Lo necesitás una sola vez.
+        <br>Si no tenés uno: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained → dale acceso de lectura/escritura de "Contents" solo al repo <b>buscador-v2</b>.</p>
+      <div id="token-status" class="status info" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <div class="tabs" style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
+        <button id="tab-btn-productos" class="btn-primary" onclick="switchTab('productos')">Productos</button>
+        <button id="tab-btn-categorias" class="btn-ghost" onclick="switchTab('categorias')">Categorías</button>
+      </div>
+
+      <div id="tab-productos">
+        <div class="toolbar">
+          <input type="text" id="search-box" placeholder="Buscar por código, nombre o marca..." oninput="renderTable()" />
+          <select id="filter-activo" onchange="renderTable()">
+            <option value="all">Todos</option>
+            <option value="active">Activos</option>
+            <option value="inactive">Dados de baja</option>
+          </select>
+          <span class="count-badge" id="count-badge"></span>
+          <button class="btn-stamp" onclick="openNewProduct()">+ Nuevo producto</button>
+          <button class="btn-primary" onclick="loadCatalog(true)">Recargar catálogo</button>
+        </div>
+        <div id="load-status" class="status info">Cargando catálogo...</div>
+        <div style="overflow:auto;max-height:65vh;">
+          <table>
+            <thead><tr><th></th><th>Código</th><th>Descripción</th><th>Marca</th><th>Precio</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="tab-categorias" style="display:none;">
+        <p class="small">Elegí qué campo querés ordenar. Tildá una o varias categorías y fusionalas en un solo nombre, o vacialas para sacarles la categoría a esos productos.</p>
+        <div class="row" style="align-items:center;">
+          <div style="max-width:220px;">
+            <label>Campo a gestionar</label>
+            <select id="cat-field" onchange="renderCategoryManager()">
+              <option value="tipo">Tipo</option>
+              <option value="categoria_raw">Categoría</option>
+            </select>
+          </div>
+          <div style="flex:1;"><label>Buscar categoría</label><input type="text" id="cat-search" placeholder="Filtrar por nombre..." oninput="renderCategoryManager()" /></div>
+        </div>
+        <div style="overflow:auto;max-height:45vh;margin-top:10px;border:1px solid var(--border);border-radius:8px;">
+          <table>
+            <thead><tr><th style="width:30px;"><input type="checkbox" id="cat-select-all" onchange="toggleAllCategories(this.checked)"/></th><th>Categoría</th><th>Productos</th></tr></thead>
+            <tbody id="cat-table-body"></tbody>
+          </table>
+        </div>
+        <div class="card" style="margin-top:14px;background:#faf8f3;">
+          <label>Nuevo nombre para las categorías tildadas (fusionarlas todas en esta)</label>
+          <div class="row">
+            <div><input type="text" id="cat-new-name" placeholder="Ej: Sellos" /></div>
+            <div style="flex:0 0 auto;"><button class="btn-stamp" onclick="applyCategoryMerge()">Fusionar / renombrar seleccionadas</button></div>
+            <div style="flex:0 0 auto;"><button class="btn-danger" onclick="applyCategoryClear()">Vaciar categoría (dejar sin asignar)</button></div>
+          </div>
+          <p class="small" id="cat-selected-count" style="margin-top:8px;"></p>
+        </div>
+        <p class="small">Esto edita en memoria todos los productos de las categorías tildadas. Como siempre, no se publica hasta que apretás "Guardar todos los cambios en GitHub" abajo.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <button class="btn-primary" onclick="commitChanges()">💾 Guardar todos los cambios en GitHub</button>
+      <span id="dirty-indicator" class="small" style="margin-left:10px;"></span>
+      <div id="commit-status" style="margin-top:10px;"></div>
+    </div>
+
+
+  </div>
+</div>
+
+<div id="modal-root"></div>
+
+<script>
+const PASSWORD_HASH = '13bba3a9100f697688ae48e23a85be0f2eac6df21980483bc32bdb1f33e548e1';
+const REPO_OWNER = 'fdovat-cell';
+const REPO_NAME = 'buscador-v2';
+const BRANCH = 'main';
+const DATA_PATH = 'public/data/productos.json';
+const FOTOS_PATH = 'public/fotos';
+const LS_AUTH = 'pv2_admin_auth_ok';
+const LS_TOKEN = 'pv2_gh_token';
+
+let products = [];
+let dataSha = null;
+let dirty = false;
+let pendingPhotoUploads = {}; // codigo -> {base64, ext}
+
+async function sha256hex(text){
+  const enc = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+async function tryLogin(){
+  const pw = document.getElementById('pw-input').value;
+  const hash = await sha256hex(pw);
+  if(hash === PASSWORD_HASH){
+    localStorage.setItem(LS_AUTH, 'ok');
+    boot();
+  } else {
+    document.getElementById('login-err').style.display = 'block';
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('pw-input')?.addEventListener('keydown', e => { if(e.key==='Enter') tryLogin(); });
+});
+
+function logout(){
+  localStorage.removeItem(LS_AUTH);
+  location.reload();
+}
+
+function boot(){
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  const savedToken = localStorage.getItem(LS_TOKEN);
+  if(savedToken){
+    document.getElementById('gh-token').value = savedToken;
+    setTokenStatus('Token guardado en este navegador.', 'ok');
+  }
+  loadCatalog(false);
+}
+
+function saveToken(){
+  const t = document.getElementById('gh-token').value.trim();
+  if(!t){ setTokenStatus('Pegá un token válido.', 'err'); return; }
+  localStorage.setItem(LS_TOKEN, t);
+  setTokenStatus('Token guardado.', 'ok');
+}
+function getToken(){ return localStorage.getItem(LS_TOKEN) || document.getElementById('gh-token').value.trim(); }
+function setTokenStatus(msg, type){
+  const el = document.getElementById('token-status');
+  el.style.display = 'block';
+  el.className = 'status ' + type;
+  el.textContent = msg;
+}
+
+function ghHeaders(){
+  return {
+    'Authorization': 'Bearer ' + getToken(),
+    'Accept': 'application/vnd.github+json',
+  };
+}
+
+async function loadCatalog(forceFresh){
+  const statusEl = document.getElementById('load-status');
+  statusEl.className = 'status info';
+  statusEl.textContent = 'Cargando catálogo...';
+  statusEl.style.display = 'block';
+  try {
+    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${DATA_PATH}?ref=${BRANCH}${forceFresh ? '&_=' + Date.now() : ''}`;
+    const headers = getToken() ? ghHeaders() : {};
+    const res = await fetch(url, { headers });
+    if(!res.ok) throw new Error('GitHub respondió ' + res.status + '. Revisá el token.');
+    const json = await res.json();
+    dataSha = json.sha;
+    const decoded = decodeURIComponent(escape(atob(json.content.replace(/\n/g,''))));
+    products = JSON.parse(decoded);
+    dirty = false;
+    updateDirtyIndicator();
+    statusEl.style.display = 'none';
+    renderTable();
+    if(document.getElementById('tab-categorias').style.display !== 'none') renderCategoryManager();
+  } catch(err){
+    statusEl.className = 'status err';
+    statusEl.textContent = 'Error cargando catálogo: ' + err.message;
+  }
+}
+
+function normalize(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+
+function renderTable(){
+  const q = normalize(document.getElementById('search-box').value);
+  const filterActivo = document.getElementById('filter-activo').value;
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  let shown = 0;
+  products.forEach((p, idx) => {
+    const isActive = p.activo !== false;
+    if(filterActivo === 'active' && !isActive) return;
+    if(filterActivo === 'inactive' && isActive) return;
+    const haystack = normalize(p.codigo + ' ' + p.descripcion + ' ' + (p.marcas||[]).join(' '));
+    if(q && !haystack.includes(q)) return;
+    shown++;
+    if(shown > 300) return; // límite de render para no trabar el navegador
+    const tr = document.createElement('tr');
+    tr.className = isActive ? '' : 'inactive';
+    const img = (p.imagenes && p.imagenes[0]) ? `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/public${p.imagenes[0]}` : '';
+    tr.innerHTML = `
+      <td>${img ? `<img class="thumb" src="${img}" loading="lazy" onerror="this.style.opacity=0.2">` : `<div class="thumb"></div>`}</td>
+      <td>${p.codigo}</td>
+      <td>${p.descripcion}</td>
+      <td>${(p.marcas||[]).join(', ')}</td>
+      <td>${p.precio != null ? p.precio : '—'} ${p.moneda||''}</td>
+      <td><span class="pill ${isActive?'active':'off'}">${isActive?'Activo':'De baja'}</span></td>
+      <td class="actions-col">
+        <button class="btn-ghost" onclick="openEditProduct(${idx})">Editar</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('count-badge').textContent = `${shown} de ${products.length} productos${shown>300?' (mostrando primeros 300, afiná la búsqueda)':''}`;
+}
+
+function markDirty(){ dirty = true; updateDirtyIndicator(); }
+function updateDirtyIndicator(){
+  const el = document.getElementById('dirty-indicator');
+  el.textContent = dirty ? '● Hay cambios sin guardar' : 'Todo guardado';
+  el.style.color = dirty ? '#b23b2e' : '#6b7280';
+}
+
+// ---- Tabs ----
+function switchTab(tab){
+  document.getElementById('tab-productos').style.display = tab === 'productos' ? 'block' : 'none';
+  document.getElementById('tab-categorias').style.display = tab === 'categorias' ? 'block' : 'none';
+  document.getElementById('tab-btn-productos').className = tab === 'productos' ? 'btn-primary' : 'btn-ghost';
+  document.getElementById('tab-btn-categorias').className = tab === 'categorias' ? 'btn-primary' : 'btn-ghost';
+  if(tab === 'categorias') renderCategoryManager();
+}
+
+// ---- Category manager ----
+function renderCategoryManager(){
+  const field = document.getElementById('cat-field').value;
+  const q = normalize(document.getElementById('cat-search').value);
+  const counts = {};
+  products.forEach(p => {
+    const val = (p[field] || '').toString().trim();
+    const key = val || '(sin categoría)';
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  const rows = Object.entries(counts)
+    .filter(([name]) => !q || normalize(name).includes(q))
+    .sort((a,b) => b[1] - a[1]);
+
+  const tbody = document.getElementById('cat-table-body');
+  tbody.innerHTML = '';
+  rows.forEach(([name, count]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="checkbox" class="cat-checkbox" value="${escapeAttr(name)}"/></td>
+      <td>${name}</td>
+      <td>${count}</td>`;
+    tbody.appendChild(tr);
+  });
+  document.querySelectorAll('.cat-checkbox').forEach(cb => cb.addEventListener('change', updateCatSelectedCount));
+  document.getElementById('cat-select-all').checked = false;
+  updateCatSelectedCount();
+}
+
+function toggleAllCategories(checked){
+  document.querySelectorAll('.cat-checkbox').forEach(cb => cb.checked = checked);
+  updateCatSelectedCount();
+}
+
+function getSelectedCategories(){
+  return Array.from(document.querySelectorAll('.cat-checkbox:checked')).map(cb => cb.value);
+}
+
+function updateCatSelectedCount(){
+  const selected = getSelectedCategories();
+  const field = document.getElementById('cat-field').value;
+  const affected = products.filter(p => selected.includes((p[field]||'').toString().trim() || '(sin categoría)')).length;
+  document.getElementById('cat-selected-count').textContent = selected.length
+    ? `${selected.length} categoría(s) tildada(s) · ${affected} producto(s) afectados`
+    : 'Ninguna categoría tildada.';
+}
+
+function applyCategoryMerge(){
+  const field = document.getElementById('cat-field').value;
+  const selected = getSelectedCategories();
+  const newName = document.getElementById('cat-new-name').value.trim();
+  if(!selected.length){ alert('Tildá al menos una categoría.'); return; }
+  if(!newName){ alert('Escribí el nombre nuevo para fusionar/renombrar.'); return; }
+  let affected = 0;
+  products.forEach(p => {
+    const current = (p[field] || '').toString().trim() || '(sin categoría)';
+    if(selected.includes(current)){
+      p[field] = newName;
+      affected++;
+    }
+  });
+  markDirty();
+  document.getElementById('cat-new-name').value = '';
+  renderCategoryManager();
+  renderTable();
+  alert(`Listo: ${affected} producto(s) actualizados a "${newName}". No olvides guardar en GitHub.`);
+}
+
+function applyCategoryClear(){
+  const field = document.getElementById('cat-field').value;
+  const selected = getSelectedCategories();
+  if(!selected.length){ alert('Tildá al menos una categoría.'); return; }
+  if(!confirm(`¿Vaciar el campo "${field}" en los productos de ${selected.length} categoría(s) tildada(s)?`)) return;
+  let affected = 0;
+  products.forEach(p => {
+    const current = (p[field] || '').toString().trim() || '(sin categoría)';
+    if(selected.includes(current)){
+      p[field] = '';
+      affected++;
+    }
+  });
+  markDirty();
+  renderCategoryManager();
+  renderTable();
+  alert(`Listo: ${affected} producto(s) quedaron sin ese campo. No olvides guardar en GitHub.`);
+}
+
+function closeModal(){ document.getElementById('modal-root').innerHTML = ''; }
+
+function openNewProduct(){
+  openProductForm(null);
+}
+function openEditProduct(idx){
+  openProductForm(idx);
+}
+
+function openProductForm(idx){
+  const isNew = idx === null;
+  const p = isNew ? {
+    codigo:'', descripcion:'', precio:'', precio_usd:null, precio_unitario:'',
+    categoria_raw:'', tipo:'', marcas:[], modalidad:'', imagenes:[], moneda:'ARS', activo:true
+  } : products[idx];
+
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+  <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <h2>${isNew ? 'Nuevo producto' : 'Editar producto'}</h2>
+      <label>Código (único)</label>
+      <input id="f-codigo" value="${p.codigo||''}" ${isNew?'':'readonly style="background:#f3f3f3"'} />
+      <label>Descripción</label>
+      <input id="f-descripcion" value="${escapeAttr(p.descripcion||'')}" />
+      <div class="row">
+        <div><label>Precio</label><input id="f-precio" type="number" step="0.01" value="${p.precio ?? ''}" /></div>
+        <div><label>Precio unitario</label><input id="f-precio-unitario" type="number" step="0.01" value="${p.precio_unitario ?? ''}" /></div>
+        <div><label>Moneda</label><select id="f-moneda"><option value="ARS" ${p.moneda!=='USD'?'selected':''}>ARS ($)</option><option value="USD" ${p.moneda==='USD'?'selected':''}>USD</option></select></div>
+      </div>
+      <div class="row">
+        <div><label>Tipo</label><input id="f-tipo" value="${escapeAttr(p.tipo||'')}" /></div>
+        <div><label>Marca(s), separadas por coma</label><input id="f-marcas" value="${escapeAttr((p.marcas||[]).join(', '))}" /></div>
+      </div>
+      <label>Modalidad / presentación</label>
+      <input id="f-modalidad" value="${escapeAttr(p.modalidad||'')}" />
+      <label>Categoría (raw)</label>
+      <input id="f-categoria" value="${escapeAttr(p.categoria_raw||'')}" />
+      <label>Foto</label>
+      <div class="imgpick">
+        ${(p.imagenes && p.imagenes[0]) ? `<img class="thumb" src="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/public${p.imagenes[0]}" style="width:50px;height:50px;">` : '<span class="small">Sin foto</span>'}
+        <input type="file" id="f-foto" accept="image/*" />
+      </div>
+      <label style="margin-top:14px;"><input type="checkbox" id="f-activo" style="width:auto;" ${p.activo!==false?'checked':''}/> Producto activo (visible en el buscador)</label>
+
+      <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-primary" onclick="saveProductForm(${isNew ? 'null':idx})">Guardar en la lista</button>
+        <button class="btn-ghost" onclick="closeModal()">Cancelar</button>
+        ${isNew ? '' : `<button class="btn-danger" onclick="deleteProduct(${idx})" style="margin-left:auto;">Eliminar producto</button>`}
+      </div>
+      <p class="small" style="margin-top:10px;">Esto solo actualiza la lista en memoria. Tocá "Guardar todos los cambios en GitHub" para publicarlo de verdad.</p>
+    </div>
+  </div>`;
+}
+
+function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
+
+async function saveProductForm(idx){
+  const codigo = document.getElementById('f-codigo').value.trim();
+  if(!codigo){ alert('El código es obligatorio.'); return; }
+  const isNew = idx === null;
+  if(isNew && products.some(p => p.codigo === codigo)){
+    alert('Ya existe un producto con ese código.');
+    return;
+  }
+  const marcas = document.getElementById('f-marcas').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const precioVal = document.getElementById('f-precio').value;
+  const precioUnitVal = document.getElementById('f-precio-unitario').value;
+
+  const newProduct = {
+    codigo,
+    descripcion: document.getElementById('f-descripcion').value.trim(),
+    precio: precioVal === '' ? null : Number(precioVal),
+    precio_usd: null,
+    categoria_raw: document.getElementById('f-categoria').value.trim(),
+    tipo: document.getElementById('f-tipo').value.trim(),
+    marcas,
+    modalidad: document.getElementById('f-modalidad').value.trim(),
+    precio_unitario: precioUnitVal === '' ? null : Number(precioUnitVal),
+    imagenes: isNew ? [] : (products[idx].imagenes || []),
+    moneda: document.getElementById('f-moneda').value,
+    activo: document.getElementById('f-activo').checked,
+  };
+
+  // foto nueva pendiente de subir
+  const fileInput = document.getElementById('f-foto');
+  if(fileInput.files && fileInput.files[0]){
+    const file = fileInput.files[0];
+    const base64 = await fileToBase64(file);
+    pendingPhotoUploads[codigo] = base64;
+    newProduct.imagenes = [`/fotos/${codigo}.webp`];
+  }
+
+  if(isNew){
+    products.push(newProduct);
+  } else {
+    products[idx] = newProduct;
+  }
+  markDirty();
+  closeModal();
+  renderTable();
+}
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function deleteProduct(idx){
+  if(!confirm('¿Eliminar este producto de la lista? (Se puede en cambio marcar como "de baja" con el check de activo, así lo conservás en el historial)')) return;
+  products.splice(idx, 1);
+  markDirty();
+  closeModal();
+  renderTable();
+}
+
+async function commitChanges(){
+  const statusEl = document.getElementById('commit-status');
+  if(!getToken()){
+    statusEl.innerHTML = '<div class="status err">Falta el token de GitHub. Pegalo arriba y guardalo.</div>';
+    return;
+  }
+  statusEl.innerHTML = '<div class="status info">Subiendo fotos pendientes...</div>';
+  try {
+    // 1. subir fotos pendientes
+    for (const codigo of Object.keys(pendingPhotoUploads)){
+      await uploadPhoto(codigo, pendingPhotoUploads[codigo]);
+    }
+    pendingPhotoUploads = {};
+
+    statusEl.innerHTML = '<div class="status info">Guardando productos.json...</div>';
+    // 2. guardar productos.json
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(products))));
+    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${DATA_PATH}`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Admin: actualización de catálogo',
+        content,
+        sha: dataSha,
+        branch: BRANCH,
+      }),
+    });
+    if(!res.ok){
+      const errBody = await res.json().catch(()=>({}));
+      throw new Error((errBody.message||('HTTP '+res.status)));
+    }
+    const json = await res.json();
+    dataSha = json.content.sha;
+    dirty = false;
+    updateDirtyIndicator();
+    statusEl.innerHTML = '<div class="status ok">Listo, guardado en GitHub. Cloudflare va a redeployar en un minuto.</div>';
+  } catch(err){
+    statusEl.innerHTML = `<div class="status err">Error al guardar: ${err.message}</div>`;
+  }
+}
+
+async function uploadPhoto(codigo, base64){
+  const path = `${FOTOS_PATH}/${codigo}.webp`;
+  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`;
+  // check if file exists to get sha (para poder sobreescribir)
+  let sha;
+  try {
+    const existing = await fetch(url + `?ref=${BRANCH}`, { headers: ghHeaders() });
+    if(existing.ok){
+      const json = await existing.json();
+      sha = json.sha;
+    }
+  } catch(e){ /* no existía, ok */ }
+
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: `Admin: foto ${codigo}`,
+      content: base64,
+      sha,
+      branch: BRANCH,
+    }),
+  });
+  if(!res.ok){
+    const errBody = await res.json().catch(()=>({}));
+    throw new Error(`Foto ${codigo}: ` + (errBody.message||('HTTP '+res.status)));
+  }
+}
+
+window.addEventListener('beforeunload', (e) => {
+  if(dirty){ e.preventDefault(); e.returnValue=''; }
+});
+
+// init
+if(localStorage.getItem(LS_AUTH) === 'ok'){
+  document.getElementById('app-screen').style.display='block';
+  boot();
+} else {
+  document.getElementById('login-screen').style.display='block';
+}
+</script>
+</body>
+</html>
