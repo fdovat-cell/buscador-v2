@@ -286,7 +286,7 @@ function renderTable(){
       <td>${p.codigo}</td>
       <td>${p.descripcion}</td>
       <td>${(p.marcas||[]).join(', ')}</td>
-      <td>${p.precio != null ? p.precio : '—'} ${p.moneda||''}</td>
+      <td>${p.precio != null ? p.precio : '—'} ${p.moneda==='USD' ? 'USD' : '$'}</td>
       <td><span class="pill ${isActive?'active':'off'}">${isActive?'Activo':'De baja'}</span></td>
       <td class="actions-col">
         <button class="btn-ghost" onclick="openEditProduct(${idx})">Editar</button>
@@ -437,13 +437,25 @@ function openProductForm(idx){
         <div><label>Moneda</label><select id="f-moneda"><option value="ARS" ${p.moneda!=='USD'?'selected':''}>ARS ($)</option><option value="USD" ${p.moneda==='USD'?'selected':''}>USD</option></select></div>
       </div>
       <div class="row">
-        <div><label>Tipo</label><input id="f-tipo" value="${escapeAttr(p.tipo||'')}" list="tipo-options" placeholder="Elegí uno existente o escribí uno nuevo" /></div>
+        <div><label>Tipo</label>
+          <select id="f-tipo" onchange="handleCategorySelect('f-tipo')">
+            <option value="">— Sin tipo —</option>
+            ${getDistinctValues('tipo').map(v => `<option value="${escapeAttr(v)}" ${v===(p.tipo||'')?'selected':''}>${v}</option>`).join('')}
+            <option value="__nuevo__" ${!getDistinctValues('tipo').includes(p.tipo||'') && p.tipo ? 'selected' : ''}>+ Nuevo tipo...</option>
+          </select>
+          <input id="f-tipo-nuevo" placeholder="Escribí el nuevo tipo" value="${!getDistinctValues('tipo').includes(p.tipo||'') ? escapeAttr(p.tipo||'') : ''}" style="margin-top:6px;display:${!getDistinctValues('tipo').includes(p.tipo||'') && p.tipo ? 'block':'none'};" />
+        </div>
         <div><label>Marca(s), separadas por coma</label><input id="f-marcas" value="${escapeAttr((p.marcas||[]).join(', '))}" /></div>
       </div>
       <label>Modalidad / presentación</label>
       <input id="f-modalidad" value="${escapeAttr(p.modalidad||'')}" />
       <label>Categoría (raw)</label>
-      <input id="f-categoria" value="${escapeAttr(p.categoria_raw||'')}" list="categoria-options" placeholder="Elegí una existente o escribí una nueva" />
+      <select id="f-categoria" onchange="handleCategorySelect('f-categoria')">
+        <option value="">— Sin categoría —</option>
+        ${getDistinctValues('categoria_raw').map(v => `<option value="${escapeAttr(v)}" ${v===(p.categoria_raw||'')?'selected':''}>${v}</option>`).join('')}
+        <option value="__nuevo__" ${!getDistinctValues('categoria_raw').includes(p.categoria_raw||'') && p.categoria_raw ? 'selected' : ''}>+ Nueva categoría...</option>
+      </select>
+      <input id="f-categoria-nuevo" placeholder="Escribí la nueva categoría" value="${!getDistinctValues('categoria_raw').includes(p.categoria_raw||'') ? escapeAttr(p.categoria_raw||'') : ''}" style="margin-top:6px;display:${!getDistinctValues('categoria_raw').includes(p.categoria_raw||'') && p.categoria_raw ? 'block':'none'};" />
       <label>Foto</label>
       <div class="imgpick">
         ${(p.imagenes && p.imagenes[0]) ? `<img class="thumb" src="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/public${p.imagenes[0]}" style="width:50px;height:50px;">` : '<span class="small">Sin foto</span>'}
@@ -458,9 +470,22 @@ function openProductForm(idx){
       </div>
       <p class="small" style="margin-top:10px;">Esto solo actualiza la lista en memoria. Tocá "Guardar todos los cambios en GitHub" para publicarlo de verdad.</p>
     </div>
-  </div>
-  <datalist id="tipo-options">${getDistinctValues('tipo').map(v => `<option value="${escapeAttr(v)}">`).join('')}</datalist>
-  <datalist id="categoria-options">${getDistinctValues('categoria_raw').map(v => `<option value="${escapeAttr(v)}">`).join('')}</datalist>`;
+  </div>`;
+}
+
+function handleCategorySelect(selectId){
+  const select = document.getElementById(selectId);
+  const nuevoInput = document.getElementById(selectId + '-nuevo');
+  nuevoInput.style.display = select.value === '__nuevo__' ? 'block' : 'none';
+  if(select.value === '__nuevo__') nuevoInput.focus();
+}
+
+function getCategoryFieldValue(selectId){
+  const select = document.getElementById(selectId);
+  if(select.value === '__nuevo__'){
+    return document.getElementById(selectId + '-nuevo').value.trim();
+  }
+  return select.value;
 }
 
 function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
@@ -482,8 +507,8 @@ async function saveProductForm(idx){
     descripcion: document.getElementById('f-descripcion').value.trim(),
     precio: precioVal === '' ? null : Number(precioVal),
     precio_usd: null,
-    categoria_raw: document.getElementById('f-categoria').value.trim(),
-    tipo: document.getElementById('f-tipo').value.trim(),
+    categoria_raw: getCategoryFieldValue('f-categoria'),
+    tipo: getCategoryFieldValue('f-tipo'),
     marcas,
     modalidad: document.getElementById('f-modalidad').value.trim(),
     precio_unitario: precioUnitVal === '' ? null : Number(precioUnitVal),
