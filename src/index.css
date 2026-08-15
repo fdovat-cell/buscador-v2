@@ -99,7 +99,7 @@ h1 { font: 700 clamp(30px, 4vw, 50px)/.98 var(--font-display); letter-spacing: -
 .product-card { min-width: 0; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 13px; overflow: hidden; box-shadow: var(--shadow-card); transition: transform .2s, box-shadow .2s, border-color .2s; animation: card-in .35s both; }
 .product-card:hover { transform: translateY(-2px); border-color: hsl(var(--primary) / .3); box-shadow: var(--shadow-soft); }
 .product-image { height: 164px; width: 100%; display: grid; place-items: center; background: hsl(var(--paper)); position: relative; overflow: hidden; }
-.product-image img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; transition: transform .25s; }
+.product-image img { width: 100%; height: 100%; object-fit: scale-down; mix-blend-mode: multiply; transition: transform .25s; }
 .product-card:hover .product-image img { transform: scale(1.035); }
 .image-missing { display: grid; place-items: center; gap: 7px; color: hsl(var(--muted-foreground)); font-size: 10px; text-align: center; }
 .image-missing svg { opacity: .45; }
@@ -167,11 +167,11 @@ h1 { font: 700 clamp(30px, 4vw, 50px)/.98 var(--font-display); letter-spacing: -
 .modal-close:hover { background: hsl(var(--accent)); }
 .detail-grid { display: grid; grid-template-columns: 43% 57%; }
 .detail-visual { min-height: 410px; display: flex; flex-direction: column; justify-content: center; align-items: center; background: hsl(var(--paper)); padding: 32px; position: relative; }
-.detail-visual > img { width: 100%; height: 305px; object-fit: contain; mix-blend-mode: multiply; }
+.detail-visual > img { width: 100%; height: 305px; object-fit: scale-down; mix-blend-mode: multiply; }
 .detail-thumbs { display: flex; gap: 7px; margin-top: 14px; max-width: 100%; overflow: auto; }
 .detail-thumb { width: 42px; height: 42px; flex: 0 0 auto; border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--card)); padding: 2px; }
 .detail-thumb.active { border-color: hsl(var(--coral)); box-shadow: 0 0 0 2px hsl(var(--coral) / .23); }
-.detail-thumb img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
+.detail-thumb img { width: 100%; height: 100%; object-fit: scale-down; mix-blend-mode: multiply; }
 .detail-copy { padding: 35px 32px 30px; position: relative; }
 .detail-copy h2 { max-width: 90%; font: 700 27px/1.1 var(--font-display); letter-spacing: -.055em; margin-bottom: 12px; }
 .detail-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
