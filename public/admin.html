@@ -130,7 +130,7 @@
         </div>
         <div style="overflow:auto;max-height:45vh;margin-top:10px;border:1px solid var(--border);border-radius:8px;">
           <table>
-            <thead><tr><th style="width:30px;"><input type="checkbox" id="cat-select-all" onchange="toggleAllCategories(this.checked)"/></th><th>Categoría</th><th>Productos</th></tr></thead>
+            <thead><tr><th style="width:30px;"><input type="checkbox" id="cat-select-all" onchange="toggleAllCategories(this.checked)"/></th><th>Categoría</th><th>Productos</th><th></th></tr></thead>
             <tbody id="cat-table-body"></tbody>
           </table>
         </div>
@@ -268,7 +268,7 @@ function renderTable(){
     const isActive = p.activo !== false;
     if(filterActivo === 'active' && !isActive) return;
     if(filterActivo === 'inactive' && isActive) return;
-    const haystack = normalize(p.codigo + ' ' + p.descripcion + ' ' + (p.marcas||[]).join(' '));
+    const haystack = normalize(p.codigo + ' ' + p.descripcion + ' ' + (p.marcas||[]).join(' ') + ' ' + (p.tipo||'') + ' ' + (p.categoria_raw||''));
     if(q && !haystack.includes(q)) return;
     shown++;
     if(shown > 300) return; // límite de render para no trabar el navegador
@@ -327,7 +327,8 @@ function renderCategoryManager(){
     tr.innerHTML = `
       <td><input type="checkbox" class="cat-checkbox" value="${escapeAttr(name)}"/></td>
       <td>${name}</td>
-      <td>${count}</td>`;
+      <td>${count}</td>
+      <td><button class="btn-ghost" onclick="viewProductsOfCategory('${escapeAttr(name)}')">Ver productos</button></td>`;
     tbody.appendChild(tr);
   });
   document.querySelectorAll('.cat-checkbox').forEach(cb => cb.addEventListener('change', updateCatSelectedCount));
@@ -338,6 +339,12 @@ function renderCategoryManager(){
 function toggleAllCategories(checked){
   document.querySelectorAll('.cat-checkbox').forEach(cb => cb.checked = checked);
   updateCatSelectedCount();
+}
+
+function viewProductsOfCategory(name){
+  switchTab('productos');
+  document.getElementById('search-box').value = name === '(sin categoría)' ? '' : name;
+  renderTable();
 }
 
 function getSelectedCategories(){
