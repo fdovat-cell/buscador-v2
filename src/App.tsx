@@ -389,7 +389,7 @@ function Home() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand" data-testid="brand-pelpap"><span className="brand-mark">P</span><span className="brand-name">Pel Sas</span><span className="brand-sub">buscador / v2</span></div>
+        <div className="brand" data-testid="brand-pelpap"><span className="brand-mark">P</span><span className="brand-name">Pel Sas</span><span className="brand-sub">buscador / v2</span><span className="brand-stats" data-testid="text-mobile-stats">{products.length ? products.length.toLocaleString('es-AR') : '—'} art. · {imageCount ? imageCount.toLocaleString('es-AR') : '—'} c/foto</span></div>
         <div className="topbar-actions"><span className="status-pill"><span className="status-dot" /> Catálogo local</span><span className="avatar">VD</span></div>
       </header>
       {!storageAvailable && <div className="storage-notice" role="status"><AlertCircle size={15} /><span>La vista previa bloquea el guardado local por ahora. El catálogo funciona normalmente; los pedidos y precios se conservarán al abrir la V2 en un navegador con almacenamiento habilitado.</span></div>}
