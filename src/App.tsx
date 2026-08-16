@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
   Check,
   ChevronDown,
   ClipboardCheck,
@@ -486,8 +483,27 @@ function Home() {
             <label className="select-wrap"><select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setVisibleCount(48); }} aria-label="Filtrar por categoría" data-testid="select-filter-category"><option value="all">Todas las categorías</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
             <div className="sort-control" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 800, color: 'hsl(213 11% 46%)', whiteSpace: 'nowrap' }}>Ordenar por:</span>
-              <label className="select-wrap" style={{ minWidth: 150 }}><select value={sortKey} onChange={(event) => { setSortKey(event.target.value as SortKey); setVisibleCount(48); }} aria-label="Ordenar catálogo" data-testid="select-sort-products"><option value="relevance">Relevancia / Nombre</option><option value="codigo">Código</option><option value="descripcion">Nombre (A-Z)</option><option value="categoria">Categoría</option><option value="marca">Marca</option><option value="precio">Precio</option></select><ChevronDown className="select-chevron" size={15} /></label>
-              <button className="sort-direction" onClick={() => setAscending((current) => !current)} aria-label={ascending ? 'Orden ascendente' : 'Orden descendente'} data-testid="button-toggle-sort"><ArrowUpDown size={15} /> {ascending ? <ArrowUp size={13} /> : <ArrowDown size={13} />}</button>
+              <label className="select-wrap" style={{ minWidth: 190 }}>
+                <select
+                  value={`${sortKey}-${ascending ? 'asc' : 'desc'}`}
+                  onChange={(event) => {
+                    const [key, direction] = event.target.value.split('-') as [SortKey, 'asc' | 'desc'];
+                    setSortKey(key);
+                    setAscending(direction === 'asc');
+                    setVisibleCount(48);
+                  }}
+                  aria-label="Ordenar catálogo"
+                  data-testid="select-sort-products"
+                >
+                  <option value="precio-asc">Precio: menor a mayor</option>
+                  <option value="precio-desc">Precio: mayor a menor</option>
+                  <option value="descripcion-asc">Alfabético (A-Z)</option>
+                  <option value="marca-asc">Marca (A-Z)</option>
+                  <option value="categoria-asc">Categoría (A-Z)</option>
+                  <option value="codigo-asc">Código</option>
+                </select>
+                <ChevronDown className="select-chevron" size={15} />
+              </label>
             </div>
             <button className="sort-button" onClick={resetFilters} data-testid="button-reset-filters"><RefreshCw size={14} /> Limpiar filtros</button>
             <span className="filter-summary" data-testid="text-filter-summary">{filteredProducts.length.toLocaleString('es-AR')} resultados{orderCount ? ` · ${orderCount} en nota` : ''}</span>
