@@ -10,6 +10,7 @@ import {
   Copy,
   Download,
   ImageOff,
+  MessageCircle,
   Minus,
   PackageOpen,
   Pencil,
@@ -33,16 +34,16 @@ type Product = {
   precio?: number | null;
   precio_usd?: number | null;
   moneda?: string | null;
-  categoria_raw?: string | null;
-  tipo?: string | null;
+  categoria?: string | null;
   marcas?: string[] | null;
   modalidad?: string | null;
   precio_unitario?: number | null;
   imagenes?: string[] | null;
+  proveedor?: number | null;
 };
 
 type OrderLine = { product: Product; quantity: number };
-type SortKey = 'relevance' | 'codigo' | 'descripcion' | 'precio' | 'tipo' | 'marca';
+type SortKey = 'relevance' | 'codigo' | 'descripcion' | 'precio' | 'categoria' | 'marca';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL;
@@ -161,14 +162,15 @@ function ProductDetail({
           <div className="detail-copy">
             <div className="eyebrow">Ficha de artículo</div>
             <h2 id="detail-title">{product.descripcion}</h2>
-            <div className="detail-meta"><span className="code-tag">{product.codigo}</span><span className="detail-type">{product.tipo || 'Sin tipo'}</span></div>
+            <div className="detail-meta"><span className="code-tag">{product.codigo}</span><span className="detail-type">{product.categoria || 'Sin categoría'}</span></div>
             <div className="detail-price" data-testid={`detail-price-${product.codigo}`}>{formatPrice(price, currency)} <small>/ precio de lista</small></div>
             <div className="detail-fields">
               <div><div className="detail-field-label">Marca</div><div className="detail-field-value">{brand}</div></div>
-              <div><div className="detail-field-label">Categoría</div><div className="detail-field-value">{product.categoria_raw || 'Sin categoría'}</div></div>
-              <div><div className="detail-field-label">Moneda</div><div className="detail-field-value">{currency}</div></div>
+              <div><div className="detail-field-label">Categoría</div><div className="detail-field-value">{product.categoria || 'Sin categoría'}</div></div>
+              <div><div className="detail-field-label">Moneda</div><div className="detail-field-value">{currencyLabel(currency)}</div></div>
               <div><div className="detail-field-label">Modalidad</div><div className="detail-field-value">{product.modalidad || 'No especificada'}</div></div>
               <div><div className="detail-field-label">Precio unitario</div><div className="detail-field-value">{product.precio_unitario ? formatPrice(product.precio_unitario, currency) : 'No informado'}</div></div>
+              <div><div className="detail-field-label">Proveedor</div><div className="detail-field-value">{product.proveedor != null ? `Proveedor ${product.proveedor}` : 'Sin asignar'}</div></div>
             </div>
             <div className="price-edit">
               <Pencil size={14} color="hsl(213 11% 46%)" />
@@ -194,6 +196,7 @@ function OrderPanel({
   onClear,
   onDownload,
   onCopy,
+  onWhatsApp,
 }: {
   lines: OrderLine[];
   note: string;
@@ -204,6 +207,7 @@ function OrderPanel({
   onClear: () => void;
   onDownload: () => void;
   onCopy: () => void;
+  onWhatsApp: () => void;
 }) {
   const ars = lines.filter((line) => getCurrency(line.product) !== 'USD').reduce((sum, line) => sum + getPrice(line.product, overrides) * line.quantity, 0);
   const usd = lines.filter((line) => getCurrency(line.product) === 'USD').reduce((sum, line) => sum + getPrice(line.product, overrides) * line.quantity, 0);
@@ -228,6 +232,7 @@ function OrderPanel({
           <textarea className="order-note" value={note} onChange={(event) => onNoteChange(event.target.value)} placeholder="Nota para el comercio, entrega o seguimiento..." aria-label="Nota del pedido" data-testid="textarea-order-note" />
           <div className="order-total"><span className="total-label">Total estimado</span>{totals.length > 1 ? <span className="mixed-total">{totals.join(' + ')}</span> : <span className="total-value">{totals[0] || '—'}</span>}</div>
           <div className="order-actions"><button onClick={onClear} data-testid="button-clear-order">Limpiar</button><button onClick={onCopy} data-testid="button-copy-order-panel"><Copy size={13} /> Copiar</button><button className="download-button" onClick={onDownload} data-testid="button-download-order"><Download size={14} /> Descargar CSV</button></div>
+          <button className="whatsapp-button" onClick={onWhatsApp} data-testid="button-whatsapp-order" style={{ width: '100%', marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#25D366', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 14px', fontWeight: 600, cursor: 'pointer' }}><MessageCircle size={16} /> Enviar por WhatsApp</button>
         </>
       )}
     </aside>
@@ -239,7 +244,6 @@ function Home() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
   const [brandFilter, setBrandFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [sortKey, setSortKey] = useState<SortKey>('relevance');
@@ -266,7 +270,7 @@ function Home() {
       const response = await fetch(assetUrl('data/productos.json'));
       if (!response.ok) throw new Error('No se pudo leer el catálogo local.');
       const data = await response.json() as Product[];
-      setProducts(Array.isArray(data) ? data.filter((item) => item?.codigo && item?.descripcion) : []);
+      setProducts(Array.isArray(data) ? data.filter((item) => item?.codigo && item?.descripcion && (item as { activo?: boolean }).activo !== false) : []);
       setLoadError('');
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'No se pudo cargar el catálogo.');
@@ -296,22 +300,25 @@ function Home() {
   useEffect(() => { writeStorage('pelpap-v2-order', JSON.stringify(order)); }, [order]);
   useEffect(() => { writeStorage('pelpap-v2-order-note', note); }, [note]);
 
-  const types = useMemo(() => [...new Set(products.map((item) => item.tipo).filter((item): item is string => Boolean(item)))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
   const brands = useMemo(() => [...new Set(products.flatMap((item) => item.marcas || []).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
-  const categories = useMemo(() => [...new Set(products.map((item) => item.categoria_raw).filter((item): item is string => Boolean(item)))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
+  const categories = useMemo(() => [...new Set(products.map((item) => item.categoria).filter((item): item is string => Boolean(item)))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
 
   const filteredProducts = useMemo(() => {
-    const query = normalize(search);
+    const queryJoined = normalize(search);
+    const queryTokens = queryJoined.split(/\s+/).filter(Boolean);
     const matching = products.filter((product) => {
-      const text = normalize([product.codigo, product.descripcion, product.categoria_raw || '', product.tipo || '', ...(product.marcas || [])].join(' '));
-      return (!query || text.includes(query)) && (typeFilter === 'all' || product.tipo === typeFilter) && (brandFilter === 'all' || product.marcas?.includes(brandFilter)) && (categoryFilter === 'all' || product.categoria_raw === categoryFilter);
+      const text = normalize([product.codigo, product.descripcion, product.categoria || '', ...(product.marcas || [])].join(' '));
+      return (queryTokens.length === 0 || queryTokens.every((token) => text.includes(token))) && (brandFilter === 'all' || product.marcas?.includes(brandFilter)) && (categoryFilter === 'all' || product.categoria === categoryFilter);
     });
     return matching.sort((a, b) => {
       if (sortKey === 'relevance') {
-        if (!query) return 0;
+        if (!queryJoined) {
+          const comparison = normalize(a.descripcion || '').localeCompare(normalize(b.descripcion || ''), 'es', { numeric: true });
+          return ascending ? comparison : -comparison;
+        }
         const score = (product: Product) => {
           const fields = [product.codigo, product.descripcion, ...(product.marcas || [])].map((field) => normalize(field || ''));
-          return fields.reduce((sum, field, index) => sum + (field === query ? 100 - index * 5 : field.startsWith(query) ? 50 - index * 3 : field.includes(query) ? 10 - index : 0), 0);
+          return fields.reduce((sum, field, index) => sum + (field === queryJoined ? 100 - index * 5 : field.startsWith(queryJoined) ? 50 - index * 3 : field.includes(queryJoined) ? 10 - index : 0), 0);
         };
         return score(b) - score(a);
       }
@@ -324,7 +331,7 @@ function Home() {
       const comparison = typeof left === 'number' && typeof right === 'number' ? left - right : String(left).localeCompare(String(right), 'es', { numeric: true });
       return ascending ? comparison : -comparison;
     });
-  }, [products, search, typeFilter, brandFilter, categoryFilter, sortKey, ascending, overrides]);
+  }, [products, search, brandFilter, categoryFilter, sortKey, ascending, overrides]);
 
   const visibleProducts = filteredProducts.slice(0, visibleCount);
   const lines = Object.values(order);
@@ -332,7 +339,7 @@ function Home() {
   const imageCount = useMemo(() => products.filter((product) => product.imagenes?.length).length, [products]);
 
   const updateSearch = (value: string) => { setSearch(value); setVisibleCount(48); };
-  const resetFilters = () => { updateSearch(''); setTypeFilter('all'); setBrandFilter('all'); setCategoryFilter('all'); setSortKey('relevance'); setAscending(true); };
+  const resetFilters = () => { updateSearch(''); setBrandFilter('all'); setCategoryFilter('all'); setSortKey('relevance'); setAscending(true); };
   const addToOrder = (product: Product) => {
     setOrder((current) => { const existing = current[product.codigo]; return { ...current, [product.codigo]: { product, quantity: (existing?.quantity || 0) + 1 } }; });
     notify(`${product.codigo} agregado a la nota`);
@@ -344,7 +351,23 @@ function Home() {
   const clearOrder = () => { if (window.confirm('¿Querés limpiar la nota de pedido?')) { setOrder({}); setNote(''); notify('Nota de pedido limpia'); } };
   const savePrice = (product: Product, value: number) => { setOverrides((current) => ({ ...current, [product.codigo]: value })); setOrder((current) => current[product.codigo] ? { ...current, [product.codigo]: { ...current[product.codigo], product } } : current); notify(`Precio local guardado para ${product.codigo}`); };
 
-  const orderText = () => ['NOTA DE PEDIDO', ...lines.map(({ product, quantity }) => `${product.codigo} · ${quantity} x ${product.descripcion}`), note ? `Nota: ${note}` : ''].filter(Boolean).join('\n');
+  const orderText = () => {
+    const itemLines = lines.map(({ product, quantity }) => {
+      const unitPrice = getPrice(product, overrides);
+      const subtotal = unitPrice * quantity;
+      const currency = currencyLabel(getCurrency(product));
+      return `${product.codigo} · ${quantity} x ${product.descripcion} · ${currency} ${compactPrice(unitPrice, getCurrency(product))} c/u · Subtotal: ${currency} ${compactPrice(subtotal, getCurrency(product))}`;
+    });
+    const arsTotal = lines.filter((line) => getCurrency(line.product) !== 'USD').reduce((sum, line) => sum + getPrice(line.product, overrides) * line.quantity, 0);
+    const usdTotal = lines.filter((line) => getCurrency(line.product) === 'USD').reduce((sum, line) => sum + getPrice(line.product, overrides) * line.quantity, 0);
+    const totalLines = [arsTotal > 0 ? `Total: $ ${compactPrice(arsTotal, 'ARS')}` : '', usdTotal > 0 ? `Total USD: USD ${compactPrice(usdTotal, 'USD')}` : ''].filter(Boolean);
+    return ['NOTA DE PEDIDO', ...itemLines, ...totalLines, note ? `Nota: ${note}` : ''].filter(Boolean).join('\n');
+  };
+  const sendWhatsApp = () => {
+    if (!lines.length) return;
+    const url = `https://wa.me/59896190002?text=${encodeURIComponent(orderText())}`;
+    window.open(url, '_blank');
+  };
   const copyOrder = async () => {
     if (!lines.length) return;
     const text = orderText();
@@ -366,7 +389,7 @@ function Home() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand" data-testid="brand-pelpap"><span className="brand-mark">P</span><span className="brand-name">pelpap</span><span className="brand-sub">buscador / v2</span></div>
+        <div className="brand" data-testid="brand-pelpap"><span className="brand-mark">P</span><span className="brand-name">Pel Sas</span><span className="brand-sub">buscador / v2</span></div>
         <div className="topbar-actions"><span className="status-pill"><span className="status-dot" /> Catálogo local</span><span className="avatar">VD</span></div>
       </header>
       {!storageAvailable && <div className="storage-notice" role="status"><AlertCircle size={15} /><span>La vista previa bloquea el guardado local por ahora. El catálogo funciona normalmente; los pedidos y precios se conservarán al abrir la V2 en un navegador con almacenamiento habilitado.</span></div>}
@@ -375,13 +398,15 @@ function Home() {
           <div className="catalog-stats"><div className="stat"><span className="stat-value" data-testid="text-product-count">{products.length ? products.length.toLocaleString('es-AR') : '—'}</span><span className="stat-label">artículos</span></div><div className="stat"><span className="stat-value">{imageCount ? imageCount.toLocaleString('es-AR') : '—'}</span><span className="stat-label">con foto</span></div></div>
         </div>
         <section className="toolbar" aria-label="Filtros del catálogo">
-          <div className="search-wrap"><Search className="search-icon" size={19} /><input autoFocus className="search-input" type="search" value={search} onChange={(event) => updateSearch(event.target.value)} placeholder="Buscar por código, descripción, marca, tipo o categoría..." aria-label="Buscar productos" data-testid="input-search-products" />{search && <button className="clear-search" onClick={() => updateSearch('')} aria-label="Limpiar búsqueda" data-testid="button-clear-search"><X size={16} /></button>}</div>
+          <div className="search-wrap"><Search className="search-icon" size={19} /><input autoFocus className="search-input" type="search" value={search} onChange={(event) => updateSearch(event.target.value)} placeholder="Buscar por código, descripción, marca o categoría..." aria-label="Buscar productos" data-testid="input-search-products" />{search && <button className="clear-search" onClick={() => updateSearch('')} aria-label="Limpiar búsqueda" data-testid="button-clear-search"><X size={16} /></button>}</div>
           <div className="toolbar-row">
-            <label className="select-wrap"><select value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value); setVisibleCount(48); }} aria-label="Filtrar por tipo" data-testid="select-filter-type"><option value="all">Todos los tipos</option>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
             <label className="select-wrap"><select value={brandFilter} onChange={(event) => { setBrandFilter(event.target.value); setVisibleCount(48); }} aria-label="Filtrar por marca" data-testid="select-filter-brand"><option value="all">Todas las marcas</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
             <label className="select-wrap"><select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setVisibleCount(48); }} aria-label="Filtrar por categoría" data-testid="select-filter-category"><option value="all">Todas las categorías</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
-            <label className="select-wrap"><select value={sortKey} onChange={(event) => { setSortKey(event.target.value as SortKey); setVisibleCount(48); }} aria-label="Ordenar catálogo" data-testid="select-sort-products"><option value="relevance">Más relevantes</option><option value="codigo">Código</option><option value="descripcion">Descripción</option><option value="tipo">Tipo</option><option value="marca">Marca</option><option value="precio">Precio</option></select><ChevronDown className="select-chevron" size={15} /></label>
-            <button className="sort-direction" onClick={() => setAscending((current) => !current)} aria-label={ascending ? 'Orden ascendente' : 'Orden descendente'} data-testid="button-toggle-sort"><ArrowUpDown size={15} /> {ascending ? <ArrowUp size={13} /> : <ArrowDown size={13} />}</button>
+            <div className="sort-control" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: 'hsl(213 11% 46%)', whiteSpace: 'nowrap' }}>Ordenar por:</span>
+              <label className="select-wrap" style={{ minWidth: 150 }}><select value={sortKey} onChange={(event) => { setSortKey(event.target.value as SortKey); setVisibleCount(48); }} aria-label="Ordenar catálogo" data-testid="select-sort-products"><option value="relevance">Relevancia / Nombre</option><option value="codigo">Código</option><option value="descripcion">Nombre (A-Z)</option><option value="categoria">Categoría</option><option value="marca">Marca</option><option value="precio">Precio</option></select><ChevronDown className="select-chevron" size={15} /></label>
+              <button className="sort-direction" onClick={() => setAscending((current) => !current)} aria-label={ascending ? 'Orden ascendente' : 'Orden descendente'} data-testid="button-toggle-sort"><ArrowUpDown size={15} /> {ascending ? <ArrowUp size={13} /> : <ArrowDown size={13} />}</button>
+            </div>
             <button className="sort-button" onClick={resetFilters} data-testid="button-reset-filters"><RefreshCw size={14} /> Limpiar filtros</button>
             <span className="filter-summary" data-testid="text-filter-summary">{filteredProducts.length.toLocaleString('es-AR')} resultados{orderCount ? ` · ${orderCount} en nota` : ''}</span>
           </div>
@@ -389,9 +414,9 @@ function Home() {
         <div className="content-layout">
           <section className="catalog-panel" aria-labelledby="catalog-title">
             <div className="list-header"><h2 className="list-title" id="catalog-title">Catálogo de artículos</h2><span className="list-hint">Mostrando {visibleProducts.length} de {filteredProducts.length}</span></div>
-            {loading ? <SkeletonGrid /> : loadError ? <div className="state-card" data-testid="error-products"><div className="error-mark"><AlertCircle size={22} /></div><h2>No pudimos cargar el catálogo</h2><p>{loadError} Revisá que los datos estén disponibles e intentá nuevamente.</p><button className="secondary-button" onClick={() => void loadCatalog()} data-testid="button-retry-products"><RefreshCw size={14} /> Reintentar</button></div> : filteredProducts.length === 0 ? <div className="state-card" data-testid="empty-products"><div className="error-mark"><PackageOpen size={22} /></div><h2>No encontramos artículos</h2><p>Probá con otro código, marca o descripción. También podés quitar los filtros.</p><button className="secondary-button" onClick={resetFilters} data-testid="button-reset-empty"><RefreshCw size={14} /> Restablecer filtros</button></div> : <><div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }} key={product.codigo} data-testid={`card-product-${product.codigo}`}><div className="product-image"><ProductImage product={product} /><span className="product-code">{product.codigo}</span></div><div className="card-body"><div className="product-type">{product.tipo || 'Sin tipo'}</div><div className="product-name">{product.descripcion}</div><div className="card-footer"><div className="product-price">{compactPrice(getPrice(product, overrides), getCurrency(product))}<span className="currency">{currencyLabel(getCurrency(product))}</span></div><button className={`add-button ${order[product.codigo] ? 'added' : ''}`} onClick={() => addToOrder(product)} aria-label={`Agregar ${product.codigo} a la nota`} data-testid={`button-add-${product.codigo}`}>{order[product.codigo] ? <Check size={14} /> : <Plus size={14} />}<span>{order[product.codigo] ? 'Agregado' : 'Agregar'}</span></button></div><button className="details-button" onClick={() => setSelected(product)} data-testid={`button-detail-${product.codigo}`}>Ver ficha completa</button></div></article>)}</div>{visibleCount < filteredProducts.length && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}><button className="secondary-button" onClick={() => setVisibleCount((count) => count + 48)} data-testid="button-load-more">Cargar 48 más</button></div>}</>}
+            {loading ? <SkeletonGrid /> : loadError ? <div className="state-card" data-testid="error-products"><div className="error-mark"><AlertCircle size={22} /></div><h2>No pudimos cargar el catálogo</h2><p>{loadError} Revisá que los datos estén disponibles e intentá nuevamente.</p><button className="secondary-button" onClick={() => void loadCatalog()} data-testid="button-retry-products"><RefreshCw size={14} /> Reintentar</button></div> : filteredProducts.length === 0 ? <div className="state-card" data-testid="empty-products"><div className="error-mark"><PackageOpen size={22} /></div><h2>No encontramos artículos</h2><p>Probá con otro código, marca o descripción. También podés quitar los filtros.</p><button className="secondary-button" onClick={resetFilters} data-testid="button-reset-empty"><RefreshCw size={14} /> Restablecer filtros</button></div> : <><div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }} key={product.codigo} data-testid={`card-product-${product.codigo}`}><div className="product-image"><ProductImage product={product} /><span className="product-code">{product.codigo}</span></div><div className="card-body"><div className="product-type">{product.categoria || 'Sin categoría'}</div><div className="product-name">{product.descripcion}</div><div className="card-footer"><div className="product-price">{compactPrice(getPrice(product, overrides), getCurrency(product))}<span className="currency">{currencyLabel(getCurrency(product))}</span></div><button className={`add-button ${order[product.codigo] ? 'added' : ''}`} onClick={() => addToOrder(product)} aria-label={`Agregar ${product.codigo} a la nota`} data-testid={`button-add-${product.codigo}`}>{order[product.codigo] ? <Check size={14} /> : <Plus size={14} />}<span>{order[product.codigo] ? 'Agregado' : 'Agregar'}</span></button></div><button className="details-button" onClick={() => setSelected(product)} data-testid={`button-detail-${product.codigo}`}>Ver ficha completa</button></div></article>)}</div>{visibleCount < filteredProducts.length && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}><button className="secondary-button" onClick={() => setVisibleCount((count) => count + 48)} data-testid="button-load-more">Cargar 48 más</button></div>}</>}
           </section>
-          <OrderPanel lines={lines} note={note} overrides={overrides} onNoteChange={setNote} onQuantity={changeQuantity} onRemove={removeFromOrder} onClear={clearOrder} onDownload={downloadOrder} onCopy={copyOrder} />
+          <OrderPanel lines={lines} note={note} overrides={overrides} onNoteChange={setNote} onQuantity={changeQuantity} onRemove={removeFromOrder} onClear={clearOrder} onDownload={downloadOrder} onCopy={copyOrder} onWhatsApp={sendWhatsApp} />
         </div>
       </main>
       {selected && <ProductDetail product={selected} price={getPrice(selected, overrides)} onClose={() => setSelected(null)} onAdd={(product) => { addToOrder(product); setSelected(null); }} onSavePrice={savePrice} />}
