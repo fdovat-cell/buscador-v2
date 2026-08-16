@@ -262,7 +262,16 @@ async function loadCatalog(forceFresh){
     if(!res.ok) throw new Error('GitHub respondió ' + res.status + '. Revisá el token.');
     const json = await res.json();
     dataSha = json.sha;
-    const decoded = decodeURIComponent(escape(atob(json.content.replace(/\n/g,''))));
+    let decoded;
+    if(json.content){
+      decoded = decodeURIComponent(escape(atob(json.content.replace(/\n/g,''))));
+    } else if(json.download_url){
+      const rawRes = await fetch(json.download_url + (forceFresh ? '?_=' + Date.now() : ''));
+      if(!rawRes.ok) throw new Error('No se pudo descargar el archivo (raw). Status ' + rawRes.status);
+      decoded = await rawRes.text();
+    } else {
+      throw new Error('El archivo es grande y GitHub no devolvió download_url.');
+    }
     products = JSON.parse(decoded);
     dirty = false;
     updateDirtyIndicator();
