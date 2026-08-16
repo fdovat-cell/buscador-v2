@@ -209,9 +209,13 @@ h1 { font: 700 clamp(30px, 4vw, 50px)/.98 var(--font-display); letter-spacing: -
   h1 { font-size: 34px; }
   .toolbar { padding: 11px; border-radius: 13px; }
   .toolbar-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .toolbar-row > * { min-width: 0; }
   .select-wrap { min-width: 0; overflow: hidden; }
   .select-wrap select { min-width: 0; text-overflow: ellipsis; }
   .sort-button, .sort-direction { width: 100%; }
+  .sort-control { grid-column: 1 / -1; min-width: 0; }
+  .sort-control .select-wrap { min-width: 0 !important; flex: 1; }
+  .sort-button { grid-column: 1 / -1; }
   .filter-summary { grid-column: 1 / -1; margin: 2px 0 0; }
   .toolbar { top: 60px; }
   .state-card { padding: 34px 16px; }

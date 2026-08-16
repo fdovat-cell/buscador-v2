@@ -279,12 +279,48 @@ function Home() {
   const [copied, setCopied] = useState(false);
   const [storageAvailable, setStorageAvailable] = useState(true);
   const feedbackTimer = useRef<number | undefined>(undefined);
+  const modalOpenRef = useRef(false);
+  const exitArmedRef = useRef(false);
+  const exitArmedTimer = useRef<number | undefined>(undefined);
 
   const notify = (message: string) => {
     setFeedback(message);
     if (feedbackTimer.current) window.clearTimeout(feedbackTimer.current);
     feedbackTimer.current = window.setTimeout(() => setFeedback(''), 2300);
   };
+
+  // Botón "atrás" del celular: si hay una ficha abierta, la cierra en vez de salir de la app.
+  // Si no hay nada abierto, primero avisa y recién con un segundo toque deja salir.
+  const openSelected = (product: Product) => {
+    setSelected(product);
+    window.history.pushState({ modal: true }, '');
+    modalOpenRef.current = true;
+  };
+  const closeSelected = () => {
+    if (modalOpenRef.current) {
+      window.history.back();
+    } else {
+      setSelected(null);
+    }
+  };
+  useEffect(() => {
+    window.history.pushState({ base: true }, '');
+    const onPopState = () => {
+      if (modalOpenRef.current) {
+        modalOpenRef.current = false;
+        setSelected(null);
+        return;
+      }
+      if (exitArmedRef.current) return;
+      exitArmedRef.current = true;
+      notify('Tocá atrás de nuevo para salir');
+      window.history.pushState({ base: true }, '');
+      if (exitArmedTimer.current) window.clearTimeout(exitArmedTimer.current);
+      exitArmedTimer.current = window.setTimeout(() => { exitArmedRef.current = false; }, 2000);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const loadCatalog = async () => {
     try {
@@ -460,12 +496,12 @@ function Home() {
         <div className="content-layout">
           <section className="catalog-panel" aria-labelledby="catalog-title">
             <div className="list-header"><h2 className="list-title" id="catalog-title">Catálogo de artículos</h2><span className="list-hint">{hasActiveQuery ? `Mostrando ${visibleProducts.length} de ${filteredProducts.length}` : `${products.length} artículos en el catálogo`}</span></div>
-            {loading ? <SkeletonGrid /> : loadError ? <div className="state-card" data-testid="error-products"><div className="error-mark"><AlertCircle size={22} /></div><h2>No pudimos cargar el catálogo</h2><p>{loadError} Revisá que los datos estén disponibles e intentá nuevamente.</p><button className="secondary-button" onClick={() => void loadCatalog()} data-testid="button-retry-products"><RefreshCw size={14} /> Reintentar</button></div> : !hasActiveQuery ? <div className="state-card" data-testid="idle-products"><div className="error-mark"><Search size={22} /></div><h2>Buscá un artículo</h2><p>Escribí un código, nombre, marca o categoría, o tocá una categoría para empezar.</p>{topCategories.length > 0 && <div className="quick-chips">{topCategories.map((category) => <button key={category} className="quick-chip" onClick={() => { setCategoryFilter(category); setVisibleCount(48); }} data-testid={`chip-category-${category}`}>{category}</button>)}</div>}</div> : filteredProducts.length === 0 ? <div className="state-card" data-testid="empty-products"><div className="error-mark"><PackageOpen size={22} /></div><h2>No encontramos artículos</h2><p>Probá con otro código, marca o descripción. También podés quitar los filtros.</p><button className="secondary-button" onClick={resetFilters} data-testid="button-reset-empty"><RefreshCw size={14} /> Restablecer filtros</button></div> : <><div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }} key={product.codigo} data-testid={`card-product-${product.codigo}`}><div className="product-image"><ProductImage product={product} /><span className="product-code">{product.codigo}</span></div><div className="card-body"><div className="product-type">{product.categoria || 'Sin categoría'}</div><div className="product-name">{product.descripcion}</div><div className="card-footer"><div className="product-price">{compactPrice(getPrice(product, overrides), getCurrency(product))}<span className="currency">{currencyLabel(getCurrency(product))}</span></div><button className={`add-button ${order[product.codigo] ? 'added' : ''}`} onClick={() => addToOrder(product)} aria-label={`Agregar ${product.codigo} a la nota`} data-testid={`button-add-${product.codigo}`}>{order[product.codigo] ? <Check size={14} /> : <Plus size={14} />}<span>{order[product.codigo] ? 'Agregado' : 'Agregar'}</span></button></div><button className="details-button" onClick={() => setSelected(product)} data-testid={`button-detail-${product.codigo}`}>Ver ficha completa</button></div></article>)}</div>{visibleCount < filteredProducts.length && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}><button className="secondary-button" onClick={() => setVisibleCount((count) => count + 48)} data-testid="button-load-more">Cargar 48 más</button></div>}</>}
+            {loading ? <SkeletonGrid /> : loadError ? <div className="state-card" data-testid="error-products"><div className="error-mark"><AlertCircle size={22} /></div><h2>No pudimos cargar el catálogo</h2><p>{loadError} Revisá que los datos estén disponibles e intentá nuevamente.</p><button className="secondary-button" onClick={() => void loadCatalog()} data-testid="button-retry-products"><RefreshCw size={14} /> Reintentar</button></div> : !hasActiveQuery ? <div className="state-card" data-testid="idle-products"><div className="error-mark"><Search size={22} /></div><h2>Buscá un artículo</h2><p>Escribí un código, nombre, marca o categoría, o tocá una categoría para empezar.</p>{topCategories.length > 0 && <div className="quick-chips">{topCategories.map((category) => <button key={category} className="quick-chip" onClick={() => { setCategoryFilter(category); setVisibleCount(48); }} data-testid={`chip-category-${category}`}>{category}</button>)}</div>}</div> : filteredProducts.length === 0 ? <div className="state-card" data-testid="empty-products"><div className="error-mark"><PackageOpen size={22} /></div><h2>No encontramos artículos</h2><p>Probá con otro código, marca o descripción. También podés quitar los filtros.</p><button className="secondary-button" onClick={resetFilters} data-testid="button-reset-empty"><RefreshCw size={14} /> Restablecer filtros</button></div> : <><div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }} key={product.codigo} data-testid={`card-product-${product.codigo}`}><div className="product-image"><ProductImage product={product} /><span className="product-code">{product.codigo}</span></div><div className="card-body"><div className="product-type">{product.categoria || 'Sin categoría'}</div><div className="product-name">{product.descripcion}</div><div className="card-footer"><div className="product-price">{compactPrice(getPrice(product, overrides), getCurrency(product))}<span className="currency">{currencyLabel(getCurrency(product))}</span></div><button className={`add-button ${order[product.codigo] ? 'added' : ''}`} onClick={() => addToOrder(product)} aria-label={`Agregar ${product.codigo} a la nota`} data-testid={`button-add-${product.codigo}`}>{order[product.codigo] ? <Check size={14} /> : <Plus size={14} />}<span>{order[product.codigo] ? 'Agregado' : 'Agregar'}</span></button></div><button className="details-button" onClick={() => openSelected(product)} data-testid={`button-detail-${product.codigo}`}>Ver ficha completa</button></div></article>)}</div>{visibleCount < filteredProducts.length && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}><button className="secondary-button" onClick={() => setVisibleCount((count) => count + 48)} data-testid="button-load-more">Cargar 48 más</button></div>}</>}
           </section>
           <OrderPanel lines={lines} note={note} overrides={overrides} onNoteChange={setNote} onQuantity={changeQuantity} onRemove={removeFromOrder} onClear={clearOrder} onDownload={downloadOrder} onCopy={copyOrder} onWhatsApp={sendWhatsApp} />
         </div>
       </main>
-      {selected && <ProductDetail product={selected} price={getPrice(selected, overrides)} onClose={() => setSelected(null)} onAdd={(product) => { addToOrder(product); setSelected(null); }} onSavePrice={savePrice} />}
+      {selected && <ProductDetail product={selected} price={getPrice(selected, overrides)} onClose={closeSelected} onAdd={(product) => { addToOrder(product); closeSelected(); }} onSavePrice={savePrice} />}
       <div className="copy-dock"><button className="secondary-button" onClick={() => void copyOrder()} disabled={!lines.length} data-testid="button-copy-order">{copied ? <><Check size={14} /> Copiado</> : <><Copy size={14} /> Copiar nota</>}</button></div>
       {lines.length > 0 && <button className="mobile-order-jump" onClick={() => document.getElementById('order-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} data-testid="button-jump-order"><ShoppingBag size={14} /> Ver nota · {orderCount}</button>}
       {feedback && <div className="feedback" role="status" aria-live="polite"><ClipboardCheck size={15} /> {feedback}</div>}
