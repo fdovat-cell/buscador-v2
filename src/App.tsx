@@ -167,7 +167,7 @@ function ProductDetail({
             <div className="detail-fields">
               <div><div className="detail-field-label">Marca</div><div className="detail-field-value">{brand}</div></div>
               <div><div className="detail-field-label">Categoría</div><div className="detail-field-value">{product.categoria || 'Sin categoría'}</div></div>
-              <div><div className="detail-field-label">Moneda</div><div className="detail-field-value">{currency}</div></div>
+              <div><div className="detail-field-label">Moneda</div><div className="detail-field-value">{currencyLabel(currency)}</div></div>
               <div><div className="detail-field-label">Modalidad</div><div className="detail-field-value">{product.modalidad || 'No especificada'}</div></div>
               <div><div className="detail-field-label">Precio unitario</div><div className="detail-field-value">{product.precio_unitario ? formatPrice(product.precio_unitario, currency) : 'No informado'}</div></div>
               <div><div className="detail-field-label">Proveedor</div><div className="detail-field-value">{product.proveedor != null ? `Proveedor ${product.proveedor}` : 'Sin asignar'}</div></div>
