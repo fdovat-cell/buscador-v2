@@ -186,6 +186,22 @@ function ProductDetail({
   );
 }
 
+function groupByProveedor(lines: OrderLine[]) {
+  const groups = new Map<string, { proveedor: number | null; label: string; lines: OrderLine[] }>();
+  lines.forEach((line) => {
+    const proveedor = line.product.proveedor ?? null;
+    const key = proveedor === null ? 'sin-proveedor' : String(proveedor);
+    const label = proveedor === null ? 'Sin proveedor asignado' : `Proveedor ${proveedor}`;
+    if (!groups.has(key)) groups.set(key, { proveedor, label, lines: [] });
+    groups.get(key)!.lines.push(line);
+  });
+  return [...groups.values()].sort((a, b) => {
+    if (a.proveedor === null) return 1;
+    if (b.proveedor === null) return -1;
+    return a.proveedor - b.proveedor;
+  });
+}
+
 function OrderPanel({
   lines,
   note,
@@ -222,12 +238,17 @@ function OrderPanel({
       ) : (
         <>
           <div className="order-items">
-            {lines.map(({ product, quantity }) => <div className="order-item" key={product.codigo} data-testid={`order-item-${product.codigo}`}>
-              <div><p className="order-item-name">{product.descripcion}</p><span className="order-item-code">{product.codigo} · {compactPrice(getPrice(product, overrides), getCurrency(product))} {currencyLabel(getCurrency(product))}</span>
-                <div className="qty-control"><button onClick={() => onQuantity(product.codigo, -1)} aria-label={`Disminuir cantidad de ${product.codigo}`} data-testid={`button-decrease-${product.codigo}`}><Minus size={12} /></button><span className="qty-value">{quantity}</span><button onClick={() => onQuantity(product.codigo, 1)} aria-label={`Aumentar cantidad de ${product.codigo}`} data-testid={`button-increase-${product.codigo}`}><Plus size={12} /></button><button className="remove-item" onClick={() => onRemove(product.codigo)} aria-label={`Quitar ${product.codigo}`} data-testid={`button-remove-${product.codigo}`}><Trash2 size={13} /></button></div>
+            {groupByProveedor(lines).map((group) => (
+              <div key={group.label} className="order-group">
+                <div className="order-group-label">{group.label}</div>
+                {group.lines.map(({ product, quantity }) => <div className="order-item" key={product.codigo} data-testid={`order-item-${product.codigo}`}>
+                  <div><p className="order-item-name">{product.descripcion}</p><span className="order-item-code">{product.codigo} · {compactPrice(getPrice(product, overrides), getCurrency(product))} {currencyLabel(getCurrency(product))}</span>
+                    <div className="qty-control"><button onClick={() => onQuantity(product.codigo, -1)} aria-label={`Disminuir cantidad de ${product.codigo}`} data-testid={`button-decrease-${product.codigo}`}><Minus size={12} /></button><span className="qty-value">{quantity}</span><button onClick={() => onQuantity(product.codigo, 1)} aria-label={`Aumentar cantidad de ${product.codigo}`} data-testid={`button-increase-${product.codigo}`}><Plus size={12} /></button><button className="remove-item" onClick={() => onRemove(product.codigo)} aria-label={`Quitar ${product.codigo}`} data-testid={`button-remove-${product.codigo}`}><Trash2 size={13} /></button></div>
+                  </div>
+                  <div className="order-item-price">{compactPrice(getPrice(product, overrides) * quantity, getCurrency(product))}<br />{currencyLabel(getCurrency(product))} · {quantity} un.</div>
+                </div>)}
               </div>
-              <div className="order-item-price">{compactPrice(getPrice(product, overrides) * quantity, getCurrency(product))}<br />{currencyLabel(getCurrency(product))} · {quantity} un.</div>
-            </div>)}
+            ))}
           </div>
           <textarea className="order-note" value={note} onChange={(event) => onNoteChange(event.target.value)} placeholder="Nota para el comercio, entrega o seguimiento..." aria-label="Nota del pedido" data-testid="textarea-order-note" />
           <div className="order-total"><span className="total-label">Total estimado</span>{totals.length > 1 ? <span className="mixed-total">{totals.join(' + ')}</span> : <span className="total-value">{totals[0] || '—'}</span>}</div>
@@ -244,6 +265,7 @@ function Home() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [brandFilter, setBrandFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [sortKey, setSortKey] = useState<SortKey>('relevance');
@@ -300,29 +322,42 @@ function Home() {
   useEffect(() => { writeStorage('pelpap-v2-order', JSON.stringify(order)); }, [order]);
   useEffect(() => { writeStorage('pelpap-v2-order-note', note); }, [note]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 150);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
   const brands = useMemo(() => [...new Set(products.flatMap((item) => item.marcas || []).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
   const categories = useMemo(() => [...new Set(products.map((item) => item.categoria).filter((item): item is string => Boolean(item)))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
 
+  const searchIndex = useMemo(() => products.map((product) => ({
+    product,
+    text: normalize([product.codigo, product.descripcion, product.categoria || '', ...(product.marcas || [])].join(' ')),
+    codigoNorm: normalize(product.codigo || ''),
+    descripcionNorm: normalize(product.descripcion || ''),
+    marcasNorm: (product.marcas || []).map((marca) => normalize(marca || '')),
+  })), [products]);
+
   const filteredProducts = useMemo(() => {
-    const queryJoined = normalize(search);
+    const queryJoined = normalize(debouncedSearch);
     const queryTokens = queryJoined.split(/\s+/).filter(Boolean);
-    const matching = products.filter((product) => {
-      const text = normalize([product.codigo, product.descripcion, product.categoria || '', ...(product.marcas || [])].join(' '));
+    const matching = searchIndex.filter(({ product, text }) => {
       return (queryTokens.length === 0 || queryTokens.every((token) => text.includes(token))) && (brandFilter === 'all' || product.marcas?.includes(brandFilter)) && (categoryFilter === 'all' || product.categoria === categoryFilter);
     });
     return matching.sort((a, b) => {
       if (sortKey === 'relevance') {
         if (!queryJoined) {
-          const comparison = normalize(a.descripcion || '').localeCompare(normalize(b.descripcion || ''), 'es', { numeric: true });
+          const comparison = normalize(a.product.descripcion || '').localeCompare(normalize(b.product.descripcion || ''), 'es', { numeric: true });
           return ascending ? comparison : -comparison;
         }
-        const score = (product: Product) => {
-          const fields = [product.codigo, product.descripcion, ...(product.marcas || [])].map((field) => normalize(field || ''));
+        const score = (entry: typeof a) => {
+          const fields = [entry.codigoNorm, entry.descripcionNorm, ...entry.marcasNorm];
           return fields.reduce((sum, field, index) => sum + (field === queryJoined ? 100 - index * 5 : field.startsWith(queryJoined) ? 50 - index * 3 : field.includes(queryJoined) ? 10 - index : 0), 0);
         };
         return score(b) - score(a);
       }
-      const value = (product: Product) => {
+      const value = (entry: typeof a) => {
+        const product = entry.product;
         if (sortKey === 'precio') return getPrice(product, overrides);
         if (sortKey === 'marca') return normalize([...(product.marcas || [])].sort((x, y) => x.localeCompare(y, 'es'))[0] || '');
         return normalize(String(product[sortKey] || ''));
@@ -330,8 +365,8 @@ function Home() {
       const left = value(a); const right = value(b);
       const comparison = typeof left === 'number' && typeof right === 'number' ? left - right : String(left).localeCompare(String(right), 'es', { numeric: true });
       return ascending ? comparison : -comparison;
-    });
-  }, [products, search, brandFilter, categoryFilter, sortKey, ascending, overrides]);
+    }).map((entry) => entry.product);
+  }, [searchIndex, debouncedSearch, brandFilter, categoryFilter, sortKey, ascending, overrides]);
 
   const visibleProducts = filteredProducts.slice(0, visibleCount);
   const lines = Object.values(order);
@@ -352,12 +387,16 @@ function Home() {
   const savePrice = (product: Product, value: number) => { setOverrides((current) => ({ ...current, [product.codigo]: value })); setOrder((current) => current[product.codigo] ? { ...current, [product.codigo]: { ...current[product.codigo], product } } : current); notify(`Precio local guardado para ${product.codigo}`); };
 
   const orderText = () => {
-    const itemLines = lines.map(({ product, quantity }) => {
-      const unitPrice = getPrice(product, overrides);
-      const subtotal = unitPrice * quantity;
-      const currency = currencyLabel(getCurrency(product));
-      return `${product.codigo} · ${quantity} x ${product.descripcion} · ${currency} ${compactPrice(unitPrice, getCurrency(product))} c/u · Subtotal: ${currency} ${compactPrice(subtotal, getCurrency(product))}`;
-    });
+    const groups = groupByProveedor(lines);
+    const itemLines = groups.flatMap((group) => [
+      `— ${group.label} —`,
+      ...group.lines.map(({ product, quantity }) => {
+        const unitPrice = getPrice(product, overrides);
+        const subtotal = unitPrice * quantity;
+        const currency = currencyLabel(getCurrency(product));
+        return `${product.codigo} · ${quantity} x ${product.descripcion} · ${currency} ${compactPrice(unitPrice, getCurrency(product))} c/u · Subtotal: ${currency} ${compactPrice(subtotal, getCurrency(product))}`;
+      }),
+    ]);
     const arsTotal = lines.filter((line) => getCurrency(line.product) !== 'USD').reduce((sum, line) => sum + getPrice(line.product, overrides) * line.quantity, 0);
     const usdTotal = lines.filter((line) => getCurrency(line.product) === 'USD').reduce((sum, line) => sum + getPrice(line.product, overrides) * line.quantity, 0);
     const totalLines = [arsTotal > 0 ? `Total: $ ${compactPrice(arsTotal, 'ARS')}` : '', usdTotal > 0 ? `Total USD: USD ${compactPrice(usdTotal, 'USD')}` : ''].filter(Boolean);
@@ -379,7 +418,8 @@ function Home() {
   };
   const downloadOrder = () => {
     if (!lines.length) return;
-    const rows = [['Código', 'Descripción', 'Marca', 'Cantidad', 'Precio unitario', 'Moneda', 'Subtotal'], ...lines.map(({ product, quantity }) => [product.codigo, product.descripcion, product.marcas?.join(', ') || '', String(quantity), String(getPrice(product, overrides)), getCurrency(product), String(getPrice(product, overrides) * quantity)])];
+    const orderedLines = groupByProveedor(lines).flatMap((group) => group.lines);
+    const rows = [['Proveedor', 'Código', 'Descripción', 'Marca', 'Cantidad', 'Precio unitario', 'Moneda', 'Subtotal'], ...orderedLines.map(({ product, quantity }) => [product.proveedor != null ? String(product.proveedor) : 'Sin asignar', product.codigo, product.descripcion, product.marcas?.join(', ') || '', String(quantity), String(getPrice(product, overrides)), getCurrency(product), String(getPrice(product, overrides) * quantity)])];
     const content = `${rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(';')).join('\n')}\n\nNota: ${note}`;
     const url = URL.createObjectURL(new Blob([`\ufeff${content}`], { type: 'text/csv;charset=utf-8;' }));
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = `nota-pedido-pelpap-${new Date().toISOString().slice(0, 10)}.csv`; anchor.click(); URL.revokeObjectURL(url);
