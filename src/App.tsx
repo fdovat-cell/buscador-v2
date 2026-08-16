@@ -268,7 +268,7 @@ function Home() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [brandFilter, setBrandFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [sortKey, setSortKey] = useState<SortKey>('relevance');
+  const [sortKey, setSortKey] = useState<SortKey>('precio');
   const [ascending, setAscending] = useState(true);
   const [visibleCount, setVisibleCount] = useState(48);
   const [selected, setSelected] = useState<Product | null>(null);
@@ -380,7 +380,7 @@ function Home() {
   const imageCount = useMemo(() => products.filter((product) => product.imagenes?.length).length, [products]);
 
   const updateSearch = (value: string) => { setSearch(value); setVisibleCount(48); };
-  const resetFilters = () => { updateSearch(''); setBrandFilter('all'); setCategoryFilter('all'); setSortKey('relevance'); setAscending(true); };
+  const resetFilters = () => { updateSearch(''); setBrandFilter('all'); setCategoryFilter('all'); setSortKey('precio'); setAscending(true); };
   const addToOrder = (product: Product) => {
     setOrder((current) => { const existing = current[product.codigo]; return { ...current, [product.codigo]: { product, quantity: (existing?.quantity || 0) + 1 } }; });
     notify(`${product.codigo} agregado a la nota`);
