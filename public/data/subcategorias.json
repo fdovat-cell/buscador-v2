@@ -16,5 +16,11 @@
     "categoria": "Abrochadoras",
     "nombre": "Abrochadoras MP5",
     "activo": true
+  },
+  {
+    "id": "subcat-84ae5776-0ce4-45ff-964a-555e218ee731",
+    "categoria": "Abrochadoras",
+    "nombre": "Abrochadoras Map1",
+    "activo": true
   }
 ]
