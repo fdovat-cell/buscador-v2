@@ -374,6 +374,12 @@ function Home() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
+  const sortTouchedRef = useRef(false);
+  useEffect(() => {
+    if (sortTouchedRef.current) return;
+    setSortKey(debouncedSearch.trim() ? 'relevance' : 'precio');
+  }, [debouncedSearch]);
+
   const brands = useMemo(() => [...new Set(products.flatMap((item) => item.marcas || []).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
   const categories = useMemo(() => [...new Set(products.map((item) => item.categoria).filter((item): item is string => Boolean(item)))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
   const searchIndex = useMemo(() => products.map((product) => ({
@@ -397,6 +403,7 @@ function Home() {
           return ascending ? comparison : -comparison;
         }
         const score = (entry: typeof a) => {
+          if (entry.codigoNorm === queryJoined) return 1000;
           const fields = [entry.codigoNorm, entry.descripcionNorm, ...entry.marcasNorm];
           return fields.reduce((sum, field, index) => sum + (field === queryJoined ? 100 - index * 5 : field.startsWith(queryJoined) ? 50 - index * 3 : field.includes(queryJoined) ? 10 - index : 0), 0);
         };
@@ -421,7 +428,7 @@ function Home() {
   const imageCount = useMemo(() => products.filter((product) => product.imagenes?.length).length, [products]);
 
   const updateSearch = (value: string) => { setSearch(value); setVisibleCount(48); };
-  const resetFilters = () => { updateSearch(''); setBrandFilter('all'); setCategoryFilter('all'); setSortKey('precio'); setAscending(true); };
+  const resetFilters = () => { updateSearch(''); setBrandFilter('all'); setCategoryFilter('all'); setSortKey('precio'); setAscending(true); sortTouchedRef.current = false; };
   const addToOrder = (product: Product) => {
     setOrder((current) => { const existing = current[product.codigo]; return { ...current, [product.codigo]: { product, quantity: (existing?.quantity || 0) + 1 } }; });
     notify(`${product.codigo} agregado a la nota`);
@@ -495,6 +502,7 @@ function Home() {
                 <select
                   value={`${sortKey}-${ascending ? 'asc' : 'desc'}`}
                   onChange={(event) => {
+                    sortTouchedRef.current = true;
                     const [key, direction] = event.target.value.split('-') as [SortKey, 'asc' | 'desc'];
                     setSortKey(key);
                     setAscending(direction === 'asc');
@@ -503,6 +511,7 @@ function Home() {
                   aria-label="Ordenar catálogo"
                   data-testid="select-sort-products"
                 >
+                  <option value="relevance-desc">Relevancia</option>
                   <option value="precio-asc">Precio: menor a mayor</option>
                   <option value="precio-desc">Precio: mayor a menor</option>
                   <option value="descripcion-asc">Alfabético (A-Z)</option>
