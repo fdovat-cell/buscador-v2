@@ -10,5 +10,11 @@
     "categoria": "Abrochadoras",
     "nombre": "Abrochadoras Pom6",
     "activo": true
+  },
+  {
+    "id": "subcat-eea7b128-49e7-49a6-8c17-3c80900f3c33",
+    "categoria": "Abrochadoras",
+    "nombre": "Abrochadoras MP5",
+    "activo": true
   }
 ]
