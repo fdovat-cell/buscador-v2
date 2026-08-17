@@ -52,6 +52,15 @@ const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL;
 const assetUrl = (path: string) => `${basePath}${path.replace(/^\/+/, '')}`;
 
+// Datos de catálogo (productos, subcategorías, orden de categorías) se sirven
+// desde Supabase Storage, no desde el bundle de Cloudflare Pages: así el admin
+// los actualiza sin disparar un rebuild del sitio. Las fotos siguen viniendo
+// del bundle (assetUrl) porque cambian con poca frecuencia.
+// Completar con la URL del proyecto de Supabase, ej:
+// 'https://xxxxxxxxxxxx.supabase.co/storage/v1/object/public/catalogo-data'
+const DATA_BASE_URL = 'https://xxlgsipmocwizhafinwr.supabase.co/storage/v1/object/public/catalogo-data';
+const dataUrl = (file: string) => `${DATA_BASE_URL}/${file}`;
+
 function getSafeStorage(): Storage | null {
   try {
     const storage = window.localStorage;
@@ -466,7 +475,7 @@ function Home() {
   const loadCatalog = async () => {
     try {
       setLoading(true);
-      const response = await fetch(assetUrl('data/productos.json'), { cache: 'no-store' });
+      const response = await fetch(dataUrl('productos.json'), { cache: 'no-store' });
       if (!response.ok) throw new Error('No se pudo leer el catálogo local.');
       const data = await response.json() as Product[];
       setProducts(Array.isArray(data) ? data.filter((item) => item?.codigo && item?.descripcion && (item as { activo?: boolean }).activo !== false) : []);
@@ -481,7 +490,7 @@ function Home() {
   const loadSubcategories = async () => {
     try {
       setSubcategoriesLoading(true);
-      const response = await fetch(assetUrl('data/subcategorias.json'), { cache: 'no-store' });
+      const response = await fetch(dataUrl('subcategorias.json'), { cache: 'no-store' });
       if (!response.ok) {
         setSubcategories([]);
         return;
@@ -498,7 +507,7 @@ function Home() {
 
   const loadCategoryOrder = async () => {
     try {
-      const response = await fetch(assetUrl('data/categorias_orden.json'), { cache: 'no-store' });
+      const response = await fetch(dataUrl('categorias_orden.json'), { cache: 'no-store' });
       if (!response.ok) {
         setCategoryOrder([]);
         return;
