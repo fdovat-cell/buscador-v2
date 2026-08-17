@@ -16,5 +16,11 @@
     "categoria": "Abrochadoras",
     "nombre": "Abrochadoras Map1",
     "activo": true
+  },
+  {
+    "id": "subcat-11b0419f-6aa0-4e03-8b6a-27edabffd01e",
+    "categoria": "Acuarelas",
+    "nombre": "Acuarela escolar",
+    "activo": true
   }
 ]
