@@ -386,6 +386,7 @@ function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [subcategoriesLoading, setSubcategoriesLoading] = useState(true);
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
@@ -451,7 +452,7 @@ function Home() {
   const loadCatalog = async () => {
     try {
       setLoading(true);
-      const response = await fetch(assetUrl('data/productos.json'));
+      const response = await fetch(assetUrl('data/productos.json'), { cache: 'no-store' });
       if (!response.ok) throw new Error('No se pudo leer el catálogo local.');
       const data = await response.json() as Product[];
       setProducts(Array.isArray(data) ? data.filter((item) => item?.codigo && item?.descripcion && (item as { activo?: boolean }).activo !== false) : []);
@@ -466,7 +467,7 @@ function Home() {
   const loadSubcategories = async () => {
     try {
       setSubcategoriesLoading(true);
-      const response = await fetch(assetUrl('data/subcategorias.json'));
+      const response = await fetch(assetUrl('data/subcategorias.json'), { cache: 'no-store' });
       if (!response.ok) {
         setSubcategories([]);
         return;
@@ -478,6 +479,20 @@ function Home() {
       setSubcategories([]);
     } finally {
       setSubcategoriesLoading(false);
+    }
+  };
+
+  const loadCategoryOrder = async () => {
+    try {
+      const response = await fetch(assetUrl('data/categorias_orden.json'), { cache: 'no-store' });
+      if (!response.ok) {
+        setCategoryOrder([]);
+        return;
+      }
+      const data = await response.json();
+      setCategoryOrder(Array.isArray(data) ? data.filter((item): item is string => typeof item === 'string') : []);
+    } catch {
+      setCategoryOrder([]);
     }
   };
 
@@ -497,6 +512,7 @@ function Home() {
     setNote(storage?.getItem('pelpap-v2-order-note') || '');
     void loadCatalog();
       void loadSubcategories();
+      void loadCategoryOrder();
   }, []);
 
   useEffect(() => { writeStorage('pelpap-v2-price-overrides', JSON.stringify(overrides)); }, [overrides]);
@@ -515,7 +531,19 @@ function Home() {
   }, [debouncedSearch]);
 
   const brands = useMemo(() => [...new Set(products.flatMap((item) => item.marcas || []).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
-  const categories = useMemo(() => [...new Set(products.map((item) => item.categoria).filter((item): item is string => Boolean(item)))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
+  const categories = useMemo(() => {
+    const present = [...new Set(products.map((item) => item.categoria).filter((item): item is string => Boolean(item)))];
+    const alphabetical = [...present].sort((a, b) => a.localeCompare(b, 'es'));
+    if (!categoryOrder.length) return alphabetical;
+    const rank = new Map(categoryOrder.map((label, index) => [label, index]));
+    const ordered = [...present].sort((a, b) => {
+      const rankA = rank.has(a) ? rank.get(a)! : Number.MAX_SAFE_INTEGER;
+      const rankB = rank.has(b) ? rank.get(b)! : Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) return rankA - rankB;
+      return a.localeCompare(b, 'es');
+    });
+    return ordered;
+  }, [products, categoryOrder]);
   const availableSubcategories = useMemo(() => {
     const known = [...subcategories];
     if (subcategories.length === 0) {
