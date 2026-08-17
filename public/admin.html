@@ -75,7 +75,7 @@
   <header>
     <div>
       <h1>Admin · Pel Sas buscador</h1>
-      <div class="sub">Editar precios, altas, bajas y fotos — se guarda directo en GitHub</div>
+      <div class="sub">Editar precios, altas, bajas y fotos — datos a Supabase, fotos a GitHub</div>
     </div>
     <div>
       <button class="btn-ghost" onclick="logout()">Salir</button>
@@ -85,7 +85,7 @@
   <div class="wrap">
 
     <div class="card" id="token-card">
-      <label>Token de GitHub (Personal Access Token, con permiso "repo")</label>
+      <label>Token de GitHub (Personal Access Token, con permiso "repo") — solo hace falta para subir fotos</label>
       <div class="row">
         <div><input type="password" id="gh-token" placeholder="ghp_xxxxxxxxxxxx" /></div>
         <div style="flex:0 0 auto;"><button class="btn-primary" onclick="saveToken()">Guardar token</button></div>
@@ -228,19 +228,47 @@ const PASSWORD_HASH = '13bba3a9100f697688ae48e23a85be0f2eac6df21980483bc32bdb1f3
 const REPO_OWNER = 'fdovat-cell';
 const REPO_NAME = 'buscador-v2';
 const BRANCH = 'main';
-const DATA_PATH = 'public/data/productos.json';
-const SUBCATEGORIES_PATH = 'public/data/subcategorias.json';
-const CATEGORY_ORDER_PATH = 'public/data/categorias_orden.json';
 const FOTOS_PATH = 'public/fotos';
 const LS_AUTH = 'pv2_admin_auth_ok';
 const LS_TOKEN = 'pv2_gh_token';
 
+// Datos (productos, subcategorías, orden de categorías) viven en Supabase
+// Storage, no en el repo: se guardan al toque, sin esperar el rebuild de
+// Cloudflare. Las fotos siguen yendo a GitHub (ver FOTOS_PATH arriba).
+// Completar con los datos del proyecto de Supabase:
+const SUPABASE_URL = 'https://xxlgsipmocwizhafinwr.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_tdrE1iMSnvMIMUGLnHz4wg_6r070C_H';
+const DATA_BUCKET = 'catalogo-data';
+const DATA_FILE = 'productos.json';
+const SUBCATEGORIES_FILE = 'subcategorias.json';
+const CATEGORY_ORDER_FILE = 'categorias_orden.json';
+
+function supabasePublicUrl(file){
+  return `${SUPABASE_URL}/storage/v1/object/public/${DATA_BUCKET}/${file}?_=${Date.now()}`;
+}
+function supabaseWriteUrl(file){
+  return `${SUPABASE_URL}/storage/v1/object/${DATA_BUCKET}/${file}`;
+}
+async function supabaseSaveJson(file, data){
+  const res = await fetch(supabaseWriteUrl(file), {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'apikey': SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json',
+      'x-upsert': 'true',
+    },
+    body: JSON.stringify(data, null, 2),
+  });
+  if(!res.ok){
+    const errBody = await res.json().catch(()=>({}));
+    throw new Error(`${file}: ` + (errBody.message || errBody.error || ('HTTP ' + res.status)));
+  }
+}
+
 let products = [];
-let dataSha = null;
 let subcategories = [];
-let subcategoriesSha = null;
 let categoryOrder = [];
-let categoryOrderSha = null;
 let dirty = false;
 let pendingPhotoUploads = {}; // codigo -> {base64, ext}
 let selectedProductCodes = new Set();
@@ -308,25 +336,11 @@ async function loadCatalog(forceFresh){
   statusEl.textContent = 'Cargando catálogo...';
   statusEl.style.display = 'block';
   try {
-    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${DATA_PATH}?ref=${BRANCH}${forceFresh ? '&_=' + Date.now() : ''}`;
-    const headers = getToken() ? ghHeaders() : {};
-    const res = await fetch(url, { headers });
-    if(!res.ok) throw new Error('GitHub respondió ' + res.status + '. Revisá el token.');
-    const json = await res.json();
-    dataSha = json.sha;
-    let decoded;
-    if(json.content){
-      decoded = decodeURIComponent(escape(atob(json.content.replace(/\n/g,''))));
-    } else if(json.download_url){
-      const rawRes = await fetch(json.download_url + (forceFresh ? '?_=' + Date.now() : ''));
-      if(!rawRes.ok) throw new Error('No se pudo descargar el archivo (raw). Status ' + rawRes.status);
-      decoded = await rawRes.text();
-    } else {
-      throw new Error('El archivo es grande y GitHub no devolvió download_url.');
-    }
-    products = JSON.parse(decoded);
-     await loadSubcategories(forceFresh);
-     await loadCategoryOrder(forceFresh);
+    const res = await fetch(supabasePublicUrl(DATA_FILE));
+    if(!res.ok) throw new Error('Supabase respondió ' + res.status + '. Revisá el bucket/URL.');
+    products = await res.json();
+    await loadSubcategories();
+    await loadCategoryOrder();
     dirty = false;
      selectedProductCodes = new Set();
     updateDirtyIndicator();
@@ -341,55 +355,25 @@ async function loadCatalog(forceFresh){
   }
 }
 
-async function loadSubcategories(forceFresh){
-  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${SUBCATEGORIES_PATH}?ref=${BRANCH}${forceFresh ? '&_=' + Date.now() : ''}`;
-  const headers = getToken() ? ghHeaders() : {};
-  const res = await fetch(url, { headers });
+async function loadSubcategories(){
+  const res = await fetch(supabasePublicUrl(SUBCATEGORIES_FILE));
   if(res.status === 404){
     subcategories = [];
-    subcategoriesSha = null;
     return;
   }
-  if(!res.ok) throw new Error('No se pudo cargar el archivo de subcategorías. GitHub respondió ' + res.status + '.');
-  const json = await res.json();
-  subcategoriesSha = json.sha;
-  let decoded;
-  if(json.content){
-    decoded = decodeURIComponent(escape(atob(json.content.replace(/\n/g,''))));
-  } else if(json.download_url){
-    const rawRes = await fetch(json.download_url + (forceFresh ? '?_=' + Date.now() : ''));
-    if(!rawRes.ok) throw new Error('No se pudo descargar el archivo de subcategorías.');
-    decoded = await rawRes.text();
-  } else {
-    throw new Error('El archivo de subcategorías no tiene contenido legible.');
-  }
-  const parsed = JSON.parse(decoded);
+  if(!res.ok) throw new Error('No se pudo cargar el archivo de subcategorías. Supabase respondió ' + res.status + '.');
+  const parsed = await res.json();
   subcategories = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.subcategorias) ? parsed.subcategorias : []);
 }
 
-async function loadCategoryOrder(forceFresh){
-  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${CATEGORY_ORDER_PATH}?ref=${BRANCH}${forceFresh ? '&_=' + Date.now() : ''}`;
-  const headers = getToken() ? ghHeaders() : {};
-  const res = await fetch(url, { headers });
+async function loadCategoryOrder(){
+  const res = await fetch(supabasePublicUrl(CATEGORY_ORDER_FILE));
   if(res.status === 404){
     categoryOrder = [];
-    categoryOrderSha = null;
     return;
   }
-  if(!res.ok) throw new Error('No se pudo cargar el orden de categorías. GitHub respondió ' + res.status + '.');
-  const json = await res.json();
-  categoryOrderSha = json.sha;
-  let decoded;
-  if(json.content){
-    decoded = decodeURIComponent(escape(atob(json.content.replace(/\n/g,''))));
-  } else if(json.download_url){
-    const rawRes = await fetch(json.download_url + (forceFresh ? '?_=' + Date.now() : ''));
-    if(!rawRes.ok) throw new Error('No se pudo descargar el orden de categorías.');
-    decoded = await rawRes.text();
-  } else {
-    throw new Error('El archivo de orden de categorías no tiene contenido legible.');
-  }
-  const parsed = JSON.parse(decoded);
+  if(!res.ok) throw new Error('No se pudo cargar el orden de categorías. Supabase respondió ' + res.status + '.');
+  const parsed = await res.json();
   categoryOrder = Array.isArray(parsed) ? parsed.filter(v => typeof v === 'string') : [];
 }
 
@@ -1113,83 +1097,38 @@ function deleteProduct(idx){
 
 async function commitChanges(){
   const statusEl = document.getElementById('commit-status');
-  if(!getToken()){
-    statusEl.innerHTML = '<div class="status err">Falta el token de GitHub. Pegalo arriba y guardalo.</div>';
+  const hasPendingPhotos = Object.keys(pendingPhotoUploads).length > 0;
+  if(hasPendingPhotos && !getToken()){
+    statusEl.innerHTML = '<div class="status err">Hay fotos pendientes y falta el token de GitHub. Pegalo arriba y guardalo (las fotos se siguen subiendo por GitHub).</div>';
     return;
   }
-  statusEl.innerHTML = '<div class="status info">Subiendo fotos pendientes...</div>';
   try {
-    // 1. subir fotos pendientes
-    for (const codigo of Object.keys(pendingPhotoUploads)){
-      await uploadPhoto(codigo, pendingPhotoUploads[codigo]);
+    // 1. subir fotos pendientes (siguen yendo a GitHub, cambian poco)
+    if(hasPendingPhotos){
+      statusEl.innerHTML = '<div class="status info">Subiendo fotos pendientes...</div>';
+      for (const codigo of Object.keys(pendingPhotoUploads)){
+        await uploadPhoto(codigo, pendingPhotoUploads[codigo]);
+      }
+      pendingPhotoUploads = {};
     }
-    pendingPhotoUploads = {};
 
-    statusEl.innerHTML = '<div class="status info">Guardando productos.json...</div>';
-    // 2. guardar productos.json
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(products))));
-    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${DATA_PATH}`;
-    const res = await fetch(url, {
-      method: 'PUT',
-      headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: 'Admin: actualización de catálogo',
-        content,
-        sha: dataSha,
-        branch: BRANCH,
-      }),
-    });
-    if(!res.ok){
-      const errBody = await res.json().catch(()=>({}));
-      throw new Error((errBody.message||('HTTP '+res.status)));
-    }
-    const json = await res.json();
-    dataSha = json.content.sha;
-    statusEl.innerHTML = '<div class="status info">Guardando subcategorias.json...</div>';
-    const taxonomyContent = btoa(unescape(encodeURIComponent(JSON.stringify(subcategories, null, 2))));
-    const taxonomyUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${SUBCATEGORIES_PATH}`;
-    const taxonomyRes = await fetch(taxonomyUrl, {
-      method: 'PUT',
-      headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: 'Admin: actualización de subcategorías',
-        content: taxonomyContent,
-        ...(subcategoriesSha ? { sha: subcategoriesSha } : {}),
-        branch: BRANCH,
-      }),
-    });
-    if(!taxonomyRes.ok){
-      const errBody = await taxonomyRes.json().catch(()=>({}));
-      throw new Error('No se pudieron guardar las subcategorías: ' + (errBody.message||('HTTP '+taxonomyRes.status)));
-    }
-    const taxonomyJson = await taxonomyRes.json();
-    subcategoriesSha = taxonomyJson.content.sha;
+    // 2. guardar los 3 JSON de datos en Supabase Storage (instantáneo, sin rebuild)
+    statusEl.innerHTML = '<div class="status info">Guardando productos...</div>';
+    await supabaseSaveJson(DATA_FILE, products);
+
+    statusEl.innerHTML = '<div class="status info">Guardando subcategorías...</div>';
+    await supabaseSaveJson(SUBCATEGORIES_FILE, subcategories);
 
     statusEl.innerHTML = '<div class="status info">Guardando orden de categorías...</div>';
     const orderToSave = getOrderedCategoryList();
-    const orderContent = btoa(unescape(encodeURIComponent(JSON.stringify(orderToSave, null, 2))));
-    const orderUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${CATEGORY_ORDER_PATH}`;
-    const orderRes = await fetch(orderUrl, {
-      method: 'PUT',
-      headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: 'Admin: actualización de orden de categorías',
-        content: orderContent,
-        ...(categoryOrderSha ? { sha: categoryOrderSha } : {}),
-        branch: BRANCH,
-      }),
-    });
-    if(!orderRes.ok){
-      const errBody = await orderRes.json().catch(()=>({}));
-      throw new Error('No se pudo guardar el orden de categorías: ' + (errBody.message||('HTTP '+orderRes.status)));
-    }
-    const orderJson = await orderRes.json();
-    categoryOrderSha = orderJson.content.sha;
+    await supabaseSaveJson(CATEGORY_ORDER_FILE, orderToSave);
     categoryOrder = orderToSave;
 
     dirty = false;
     updateDirtyIndicator();
-    statusEl.innerHTML = '<div class="status ok">Listo, productos, subcategorías y orden de categorías guardados en GitHub. Cloudflare va a redeployar en un minuto.</div>';
+    statusEl.innerHTML = hasPendingPhotos
+      ? '<div class="status ok">Listo. Datos guardados al toque en Supabase; las fotos van a estar disponibles cuando Cloudflare termine de redeployar (1-2 min).</div>'
+      : '<div class="status ok">Listo, guardado al toque. No hace falta esperar ningún rebuild.</div>';
   } catch(err){
     statusEl.innerHTML = `<div class="status err">Error al guardar: ${err.message}</div>`;
   }
