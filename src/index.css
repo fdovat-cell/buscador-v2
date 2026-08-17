@@ -195,6 +195,9 @@ h1 { font: 700 clamp(30px, 4vw, 50px)/.98 var(--font-display); letter-spacing: -
 .subcategory-row svg { margin-left: auto; color: hsl(var(--muted-foreground)); }
 .subcategory-marker { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: hsl(var(--coral)); }
 .category-note { margin-top: 14px; padding: 11px 13px; border-radius: 9px; background: hsl(var(--muted) / .68); color: hsl(var(--muted-foreground)); font-size: 10px; }
+.active-category-chip { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 6px 8px 6px 12px; border-radius: 99px; border: 1px solid hsl(var(--accent) / .55); background: hsl(var(--accent) / .12); color: hsl(var(--primary)); font-size: 11px; font-weight: 700; }
+.active-category-chip button { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: hsl(var(--card)); color: hsl(var(--muted-foreground)); transition: background .18s, color .18s; }
+.active-category-chip button:hover { background: hsl(var(--coral) / .15); color: hsl(var(--coral)); }
 .category-empty { margin-top: 8px; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(24,33,31,.48); backdrop-filter: blur(5px); animation: fade-in .18s ease-out; }
