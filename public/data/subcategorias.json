@@ -22,5 +22,11 @@
     "categoria": "Acuarelas",
     "nombre": "Acuarela escolar",
     "activo": true
+  },
+  {
+    "id": "subcat-1462b67c-03f5-4bdc-a334-9cf9782b1ff9",
+    "categoria": "Abrochadoras",
+    "nombre": "Sacabroches",
+    "activo": true
   }
 ]
