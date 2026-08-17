@@ -3,6 +3,7 @@ import {
   AlertCircle,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ClipboardCheck,
   Copy,
@@ -145,14 +146,49 @@ function CategoryBrowser({
   subcategoriesLoading,
   onCategory,
   onSubcategory,
+  onBack,
 }: {
   categories: CategorySummary[];
   expandedCategory: string | null;
   subcategoriesLoading: boolean;
   onCategory: (category: CategorySummary) => void;
   onSubcategory: (category: CategorySummary, subcategory: Subcategory) => void;
+  onBack: () => void;
 }) {
   const expanded = categories.find((category) => category.label === expandedCategory);
+  const showSubcategoryScreen = Boolean(expanded && expanded.subcategories.length > 0);
+
+  useEffect(() => {
+    if (showSubcategoryScreen) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [showSubcategoryScreen, expandedCategory]);
+
+  if (expanded && showSubcategoryScreen) {
+    return (
+      <div className="category-browser" data-testid="category-browser">
+        <button className="back-button" onClick={onBack} data-testid="button-back-categories">
+          <ChevronLeft size={16} /> Categorías
+        </button>
+        <div className="category-browser-head">
+          <div>
+            <div className="eyebrow">Dentro de {expanded.label}</div>
+            <h2 className="category-browser-title">Elegí un tipo</h2>
+            <p className="category-browser-copy">Tocá el tipo exacto de artículo que buscás.</p>
+          </div>
+          <span className="category-count">{expanded.subcategories.length} opciones</span>
+        </div>
+        <div className="subcategory-list">
+          {expanded.subcategories.map((subcategory) => (
+            <button className="subcategory-row" key={subcategory.id} onClick={() => onSubcategory(expanded, subcategory)} data-testid={`button-subcategory-${subcategory.id}`}>
+              <span className="subcategory-marker" />
+              <span>{subcategory.label}</span>
+              <ChevronRight size={15} />
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="category-browser" data-testid="category-browser">
       <div className="category-browser-head">
@@ -171,43 +207,21 @@ function CategoryBrowser({
           <p>Cuando el catálogo tenga artículos con categoría, van a aparecer acá.</p>
         </div>
       ) : (
-        <>
-          <div className="category-grid">
-            {categories.map((category, index) => (
-              <button
-                className={`category-tile ${expandedCategory === category.label ? 'active' : ''}`}
-                style={{ animationDelay: `${Math.min(index, 16) * 18}ms` }}
-                key={category.label}
-                onClick={() => onCategory(category)}
-                data-testid={`button-category-${category.label}`}
-              >
-                <span className="category-tile-icon"><FolderOpen size={17} /></span>
-                <span className="category-tile-copy"><strong>{category.label}</strong><small>{category.count} {category.count === 1 ? 'artículo' : 'artículos'}</small></span>
-                <ChevronRight className="category-tile-arrow" size={17} />
-              </button>
-            ))}
-          </div>
-          {expanded && expanded.subcategories.length > 0 && (
-            <section className="subcategory-panel" aria-labelledby="subcategory-title" data-testid="subcategory-panel">
-              <div className="subcategory-head">
-                <div><div className="eyebrow">Dentro de {expanded.label}</div><h3 id="subcategory-title">Elegí un tipo</h3></div>
-                <span>{expanded.subcategories.length} opciones</span>
-              </div>
-              <div className="subcategory-list">
-                {expanded.subcategories.map((subcategory) => (
-                  <button className="subcategory-row" key={subcategory.id} onClick={() => onSubcategory(expanded, subcategory)} data-testid={`button-subcategory-${subcategory.id}`}>
-                    <span className="subcategory-marker" />
-                    <span>{subcategory.label}</span>
-                    <ChevronRight size={15} />
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-          {expanded && !expanded.subcategories.length && !subcategoriesLoading && (
-            <div className="category-note" role="status">Esta categoría no tiene subcategorías. Mostrando sus artículos.</div>
-          )}
-        </>
+        <div className="category-grid">
+          {categories.map((category, index) => (
+            <button
+              className={`category-tile ${expandedCategory === category.label ? 'active' : ''}`}
+              style={{ animationDelay: `${Math.min(index, 16) * 18}ms` }}
+              key={category.label}
+              onClick={() => onCategory(category)}
+              data-testid={`button-category-${category.label}`}
+            >
+              <span className="category-tile-icon"><FolderOpen size={17} /></span>
+              <span className="category-tile-copy"><strong>{category.label}</strong><small>{category.count} {category.count === 1 ? 'artículo' : 'artículos'}</small></span>
+              <ChevronRight className="category-tile-arrow" size={17} />
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -728,7 +742,7 @@ function Home() {
         <div className="content-layout">
           <section className="catalog-panel" aria-labelledby="catalog-title">
             <div className="list-header"><h2 className="list-title" id="catalog-title">Catálogo de artículos</h2><span className="list-hint">{hasActiveQuery ? `Mostrando ${visibleProducts.length} de ${filteredProducts.length}` : `${products.length} artículos en el catálogo`}</span></div>
-             {loading ? <SkeletonGrid /> : loadError ? <div className="state-card" data-testid="error-products"><div className="error-mark"><AlertCircle size={22} /></div><h2>No pudimos cargar el catálogo</h2><p>{loadError} Revisá que los datos estén disponibles e intentá nuevamente.</p><button className="secondary-button" onClick={() => void loadCatalog()} data-testid="button-retry-products"><RefreshCw size={14} /> Reintentar</button></div> : (!hasActiveQuery || browsingSubcategories) ? <CategoryBrowser categories={categorySummaries} expandedCategory={expandedCategory} subcategoriesLoading={subcategoriesLoading} onCategory={chooseCategory} onSubcategory={chooseSubcategory} /> : filteredProducts.length === 0 ? <div className="state-card" data-testid="empty-products"><div className="error-mark"><PackageOpen size={22} /></div><h2>No encontramos artículos</h2><p>Probá con otro código, marca o descripción. También podés quitar los filtros.</p><button className="secondary-button" onClick={resetFilters} data-testid="button-reset-empty"><RefreshCw size={14} /> Restablecer filtros</button></div> : <><div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }} key={product.codigo} data-testid={`card-product-${product.codigo}`}><div className="product-image"><ProductImage product={product} /><span className="product-code">{product.codigo}</span></div><div className="card-body"><div className="product-type">{product.categoria || 'Sin categoría'}</div><div className="product-name">{product.descripcion}</div><div className="card-footer"><div className="product-price">{compactPrice(getPrice(product, overrides), getCurrency(product))}<span className="currency">{currencyLabel(getCurrency(product))}</span></div><button className={`add-button ${order[product.codigo] ? 'added' : ''}`} onClick={() => addToOrder(product)} aria-label={`Agregar ${product.codigo} a la nota`} data-testid={`button-add-${product.codigo}`}>{order[product.codigo] ? <Check size={14} /> : <Plus size={14} />}<span>{order[product.codigo] ? 'Agregado' : 'Agregar'}</span></button></div><button className="details-button" onClick={() => openSelected(product)} data-testid={`button-detail-${product.codigo}`}>Ver ficha completa</button></div></article>)}</div>{visibleCount < filteredProducts.length && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}><button className="secondary-button" onClick={() => setVisibleCount((count) => count + 48)} data-testid="button-load-more">Cargar 48 más</button></div>}</>}
+             {loading ? <SkeletonGrid /> : loadError ? <div className="state-card" data-testid="error-products"><div className="error-mark"><AlertCircle size={22} /></div><h2>No pudimos cargar el catálogo</h2><p>{loadError} Revisá que los datos estén disponibles e intentá nuevamente.</p><button className="secondary-button" onClick={() => void loadCatalog()} data-testid="button-retry-products"><RefreshCw size={14} /> Reintentar</button></div> : (!hasActiveQuery || browsingSubcategories) ? <CategoryBrowser categories={categorySummaries} expandedCategory={expandedCategory} subcategoriesLoading={subcategoriesLoading} onCategory={chooseCategory} onSubcategory={chooseSubcategory} onBack={() => setExpandedCategory(null)} /> : filteredProducts.length === 0 ? <div className="state-card" data-testid="empty-products"><div className="error-mark"><PackageOpen size={22} /></div><h2>No encontramos artículos</h2><p>Probá con otro código, marca o descripción. También podés quitar los filtros.</p><button className="secondary-button" onClick={resetFilters} data-testid="button-reset-empty"><RefreshCw size={14} /> Restablecer filtros</button></div> : <><div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }} key={product.codigo} data-testid={`card-product-${product.codigo}`}><div className="product-image"><ProductImage product={product} /><span className="product-code">{product.codigo}</span></div><div className="card-body"><div className="product-type">{product.categoria || 'Sin categoría'}</div><div className="product-name">{product.descripcion}</div><div className="card-footer"><div className="product-price">{compactPrice(getPrice(product, overrides), getCurrency(product))}<span className="currency">{currencyLabel(getCurrency(product))}</span></div><button className={`add-button ${order[product.codigo] ? 'added' : ''}`} onClick={() => addToOrder(product)} aria-label={`Agregar ${product.codigo} a la nota`} data-testid={`button-add-${product.codigo}`}>{order[product.codigo] ? <Check size={14} /> : <Plus size={14} />}<span>{order[product.codigo] ? 'Agregado' : 'Agregar'}</span></button></div><button className="details-button" onClick={() => openSelected(product)} data-testid={`button-detail-${product.codigo}`}>Ver ficha completa</button></div></article>)}</div>{visibleCount < filteredProducts.length && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}><button className="secondary-button" onClick={() => setVisibleCount((count) => count + 48)} data-testid="button-load-more">Cargar 48 más</button></div>}</>}
           </section>
           <OrderPanel lines={lines} note={note} overrides={overrides} onNoteChange={setNote} onQuantity={changeQuantity} onRemove={removeFromOrder} onClear={clearOrder} onDownload={downloadOrder} onCopy={copyOrder} onWhatsApp={sendWhatsApp} />
         </div>

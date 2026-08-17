@@ -166,6 +166,8 @@ h1 { font: 700 clamp(30px, 4vw, 50px)/.98 var(--font-display); letter-spacing: -
 .quick-chip:hover { background: hsl(var(--accent) / .18); border-color: hsl(var(--accent)); }
 
 .category-browser { padding: 5px 0 20px; }
+.back-button { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 14px; border: 1px solid hsl(var(--border)); border-radius: 99px; padding: 7px 14px 7px 10px; background: hsl(var(--card)); color: hsl(var(--primary)); font-size: 11px; font-weight: 700; transition: background .18s, border-color .18s; }
+.back-button:hover { background: hsl(var(--accent) / .14); border-color: hsl(var(--accent)); }
 .category-browser-head { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 17px; }
 .category-browser-title { font: 700 clamp(24px, 3vw, 34px)/1 var(--font-display); letter-spacing: -.055em; margin: 0 0 6px; }
 .category-browser-copy { color: hsl(var(--muted-foreground)); font-size: 11px; line-height: 1.5; margin: 0; }
