@@ -90,9 +90,10 @@
     </div>
 
     <div class="card">
-      <div class="tabs" style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
+        <div class="tabs" style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
         <button id="tab-btn-productos" class="btn-primary" onclick="switchTab('productos')">Productos</button>
         <button id="tab-btn-categorias" class="btn-ghost" onclick="switchTab('categorias')">Categorías</button>
+          <button id="tab-btn-subcategorias" class="btn-ghost" onclick="switchTab('subcategorias')">Subcategorías</button>
         <button id="tab-btn-proveedores" class="btn-ghost" onclick="switchTab('proveedores')">Proveedores</button>
       </div>
 
@@ -106,12 +107,14 @@
           </select>
           <span class="count-badge" id="count-badge"></span>
           <button class="btn-stamp" onclick="openNewProduct()">+ Nuevo producto</button>
+          <button class="btn-ghost" onclick="openBulkSubcategoryAssign()">Asignar subcategoría</button>
+          <button class="btn-ghost" onclick="clearProductSelection()">Limpiar selección</button>
           <button class="btn-primary" onclick="loadCatalog(true)">Recargar catálogo</button>
         </div>
         <div id="load-status" class="status info">Cargando catálogo...</div>
         <div style="overflow:auto;max-height:65vh;">
           <table>
-            <thead><tr><th></th><th>Código</th><th>Descripción</th><th>Marca</th><th>Precio</th><th>Prov.</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th style="width:30px;"><input type="checkbox" id="product-select-all" onchange="toggleAllVisibleProducts(this.checked)"/></th><th></th><th>Código</th><th>Descripción</th><th>Marca</th><th>Precio</th><th>Prov.</th><th>Subcategoría</th><th>Estado</th><th></th></tr></thead>
             <tbody id="table-body"></tbody>
           </table>
         </div>
@@ -140,6 +143,35 @@
           <p class="small" id="cat-selected-count" style="margin-top:8px;"></p>
         </div>
         <p class="small">Esto edita en memoria todos los productos de las categorías tildadas. Como siempre, no se publica hasta que apretás "Guardar todos los cambios en GitHub" abajo.</p>
+      </div>
+
+      <div id="tab-subcategorias" style="display:none;">
+        <p class="small">Creá subcategorías solo donde realmente ayuden. El nombre queda registrado para no volver a crear duplicados dentro de la misma categoría. Podés dejar productos sin subcategoría y asignarlos después.</p>
+        <div class="card" style="margin-top:14px;background:#faf8f3;">
+          <label>Nueva subcategoría</label>
+          <div class="row">
+            <div>
+              <select id="subcat-category"></select>
+            </div>
+            <div>
+              <input type="text" id="subcat-name" placeholder="Ej: Cuadernos escolares" />
+            </div>
+            <div style="flex:0 0 auto;"><button class="btn-stamp" onclick="createSubcategory()">Crear subcategoría</button></div>
+          </div>
+          <p class="small" style="margin-bottom:0;">Cada subcategoría recibe un identificador permanente. Si luego cambiás el nombre, los productos siguen vinculados.</p>
+        </div>
+        <div class="toolbar" style="margin-top:14px;">
+          <input type="text" id="subcat-search" placeholder="Buscar subcategoría..." oninput="renderSubcategoryManager()" />
+          <select id="subcat-filter-category" onchange="renderSubcategoryManager()"></select>
+          <span class="count-badge" id="subcat-count-badge"></span>
+        </div>
+        <div style="overflow:auto;max-height:48vh;border:1px solid var(--border);border-radius:8px;">
+          <table>
+            <thead><tr><th>Subcategoría</th><th>Categoría</th><th>Productos</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="subcat-table-body"></tbody>
+          </table>
+        </div>
+        <p class="small" style="margin-top:10px;">Las subcategorías archivadas se conservan como historial. Si intentás crear otra con el mismo nombre, se puede reactivar la anterior.</p>
       </div>
 
       <div id="tab-proveedores" style="display:none;">
@@ -184,14 +216,18 @@ const REPO_OWNER = 'fdovat-cell';
 const REPO_NAME = 'buscador-v2';
 const BRANCH = 'main';
 const DATA_PATH = 'public/data/productos.json';
+const SUBCATEGORIES_PATH = 'public/data/subcategorias.json';
 const FOTOS_PATH = 'public/fotos';
 const LS_AUTH = 'pv2_admin_auth_ok';
 const LS_TOKEN = 'pv2_gh_token';
 
 let products = [];
 let dataSha = null;
+let subcategories = [];
+let subcategoriesSha = null;
 let dirty = false;
 let pendingPhotoUploads = {}; // codigo -> {base64, ext}
+let selectedProductCodes = new Set();
 
 async function sha256hex(text){
   const enc = new TextEncoder().encode(text);
@@ -273,16 +309,45 @@ async function loadCatalog(forceFresh){
       throw new Error('El archivo es grande y GitHub no devolvió download_url.');
     }
     products = JSON.parse(decoded);
+     await loadSubcategories(forceFresh);
     dirty = false;
+     selectedProductCodes = new Set();
     updateDirtyIndicator();
     rebuildIndexes();
     statusEl.style.display = 'none';
     renderTable();
     if(document.getElementById('tab-categorias').style.display !== 'none') renderCategoryManager();
+     if(document.getElementById('tab-subcategorias').style.display !== 'none') renderSubcategoryManager();
   } catch(err){
     statusEl.className = 'status err';
     statusEl.textContent = 'Error cargando catálogo: ' + err.message;
   }
+}
+
+async function loadSubcategories(forceFresh){
+  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${SUBCATEGORIES_PATH}?ref=${BRANCH}${forceFresh ? '&_=' + Date.now() : ''}`;
+  const headers = getToken() ? ghHeaders() : {};
+  const res = await fetch(url, { headers });
+  if(res.status === 404){
+    subcategories = [];
+    subcategoriesSha = null;
+    return;
+  }
+  if(!res.ok) throw new Error('No se pudo cargar el archivo de subcategorías. GitHub respondió ' + res.status + '.');
+  const json = await res.json();
+  subcategoriesSha = json.sha;
+  let decoded;
+  if(json.content){
+    decoded = decodeURIComponent(escape(atob(json.content.replace(/\n/g,''))));
+  } else if(json.download_url){
+    const rawRes = await fetch(json.download_url + (forceFresh ? '?_=' + Date.now() : ''));
+    if(!rawRes.ok) throw new Error('No se pudo descargar el archivo de subcategorías.');
+    decoded = await rawRes.text();
+  } else {
+    throw new Error('El archivo de subcategorías no tiene contenido legible.');
+  }
+  const parsed = JSON.parse(decoded);
+  subcategories = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.subcategorias) ? parsed.subcategorias : []);
 }
 
 function normalize(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
@@ -291,6 +356,15 @@ function getDistinctValues(field){
   const set = new Set();
   products.forEach(p => { const v = (p[field]||'').toString().trim(); if(v) set.add(v); });
   return Array.from(set).sort((a,b) => a.localeCompare(b,'es'));
+}
+
+function getSubcategoryById(id){
+  return subcategories.find(item => item.id === id);
+}
+
+function getSubcategoryName(id){
+  const item = getSubcategoryById(id);
+  return item ? item.nombre : '';
 }
 
 let sortedProducts = []; // [{p, idx}] cacheado, ordenado por descripción
@@ -327,12 +401,14 @@ function renderTable(){
     if(shown > 300) continue; // límite de render para no trabar el navegador
     const img = (p.imagenes && p.imagenes[0]) ? `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/public${p.imagenes[0]}` : '';
     rowsHtml.push(`<tr class="${isActive ? '' : 'inactive'}">
+      <td><input type="checkbox" class="product-checkbox" value="${escapeAttr(p.codigo)}" ${selectedProductCodes.has(p.codigo) ? 'checked' : ''} onchange="toggleProductSelection('${escapeAttr(p.codigo)}', this.checked)"/></td>
       <td>${img ? `<img class="thumb" src="${img}" loading="lazy" onerror="this.style.opacity=0.2">` : `<div class="thumb"></div>`}</td>
       <td>${p.codigo}</td>
       <td>${p.descripcion}</td>
       <td>${(p.marcas||[]).join(', ')}</td>
       <td>${p.precio != null ? p.precio : '—'} ${p.moneda==='USD' ? 'USD' : '$'}</td>
       <td>${p.proveedor != null ? p.proveedor : '—'}</td>
+      <td>${getSubcategoryName(p.subcategoria_id) || '—'}</td>
       <td><span class="pill ${isActive?'active':'off'}">${isActive?'Activo':'De baja'}</span></td>
       <td class="actions-col">
         <button class="btn-ghost" onclick="openEditProduct(${idx})">Editar</button>
@@ -341,6 +417,31 @@ function renderTable(){
   }
   tbody.innerHTML = rowsHtml.join('');
   document.getElementById('count-badge').textContent = `${shown} de ${products.length} productos${shown>300?' (mostrando primeros 300, afiná la búsqueda)':''}`;
+  const visibleCheckboxes = Array.from(document.querySelectorAll('.product-checkbox'));
+  const selectAll = document.getElementById('product-select-all');
+  selectAll.checked = visibleCheckboxes.length > 0 && visibleCheckboxes.every(cb => cb.checked);
+  selectAll.indeterminate = visibleCheckboxes.some(cb => cb.checked) && !selectAll.checked;
+  document.getElementById('count-badge').textContent += selectedProductCodes.size ? ` · ${selectedProductCodes.size} seleccionados` : '';
+}
+
+function toggleProductSelection(codigo, checked){
+  if(checked) selectedProductCodes.add(codigo);
+  else selectedProductCodes.delete(codigo);
+  renderTable();
+}
+
+function toggleAllVisibleProducts(checked){
+  document.querySelectorAll('.product-checkbox').forEach(cb => {
+    const codigo = cb.value;
+    if(checked) selectedProductCodes.add(codigo);
+    else selectedProductCodes.delete(codigo);
+  });
+  renderTable();
+}
+
+function clearProductSelection(){
+  selectedProductCodes.clear();
+  renderTable();
 }
 
 function markDirty(){ dirty = true; updateDirtyIndicator(); }
@@ -354,11 +455,14 @@ function updateDirtyIndicator(){
 function switchTab(tab){
   document.getElementById('tab-productos').style.display = tab === 'productos' ? 'block' : 'none';
   document.getElementById('tab-categorias').style.display = tab === 'categorias' ? 'block' : 'none';
+  document.getElementById('tab-subcategorias').style.display = tab === 'subcategorias' ? 'block' : 'none';
   document.getElementById('tab-proveedores').style.display = tab === 'proveedores' ? 'block' : 'none';
   document.getElementById('tab-btn-productos').className = tab === 'productos' ? 'btn-primary' : 'btn-ghost';
   document.getElementById('tab-btn-categorias').className = tab === 'categorias' ? 'btn-primary' : 'btn-ghost';
+  document.getElementById('tab-btn-subcategorias').className = tab === 'subcategorias' ? 'btn-primary' : 'btn-ghost';
   document.getElementById('tab-btn-proveedores').className = tab === 'proveedores' ? 'btn-primary' : 'btn-ghost';
   if(tab === 'categorias') renderCategoryManager();
+  if(tab === 'subcategorias') renderSubcategoryManager();
   if(tab === 'proveedores') renderProveedorManager();
 }
 
@@ -480,6 +584,117 @@ function applyCategoryClear(){
   alert(`Listo: ${affected} producto(s) quedaron sin ese campo. No olvides guardar en GitHub.`);
 }
 
+// ---- Subcategory manager ----
+function activeCategories(){
+  return getDistinctValues('categoria');
+}
+
+function subcategoryCount(id){
+  return products.filter(p => p.subcategoria_id === id).length;
+}
+
+function populateSubcategoryCategorySelects(){
+  const categories = activeCategories();
+  const createSelect = document.getElementById('subcat-category');
+  const filterSelect = document.getElementById('subcat-filter-category');
+  if(!createSelect || !filterSelect) return;
+  const currentCreate = createSelect.value;
+  const currentFilter = filterSelect.value;
+  createSelect.innerHTML = categories.length
+    ? categories.map(v => `<option value="${escapeAttr(v)}">${v}</option>`).join('')
+    : '<option value="">— No hay categorías —</option>';
+  filterSelect.innerHTML = '<option value="all">Todas las categorías</option>'
+    + categories.map(v => `<option value="${escapeAttr(v)}">${v}</option>`).join('');
+  if(categories.includes(currentCreate)) createSelect.value = currentCreate;
+  if(categories.includes(currentFilter)) filterSelect.value = currentFilter;
+  else filterSelect.value = 'all';
+}
+
+function renderSubcategoryManager(){
+  populateSubcategoryCategorySelects();
+  const query = normalize(document.getElementById('subcat-search')?.value || '');
+  const category = document.getElementById('subcat-filter-category')?.value || 'all';
+  const rows = subcategories
+    .filter(item => category === 'all' || item.categoria === category)
+    .filter(item => !query || normalize(item.nombre).includes(query) || normalize(item.categoria).includes(query))
+    .sort((a,b) => {
+      const activeOrder = Number(b.activo !== false) - Number(a.activo !== false);
+      return activeOrder || normalize(a.categoria + ' ' + a.nombre).localeCompare(normalize(b.categoria + ' ' + b.nombre), 'es', { numeric: true });
+    });
+  const tbody = document.getElementById('subcat-table-body');
+  if(!tbody) return;
+  tbody.innerHTML = rows.length ? rows.map(item => `
+    <tr class="${item.activo === false ? 'inactive' : ''}">
+      <td><b>${item.nombre}</b><div class="small">${item.id}</div></td>
+      <td>${item.categoria}</td>
+      <td>${subcategoryCount(item.id)}</td>
+      <td><span class="pill ${item.activo === false ? 'off' : 'active'}">${item.activo === false ? 'Archivada' : 'Activa'}</span></td>
+      <td class="actions-col">
+        <button class="btn-ghost" onclick="renameSubcategory('${escapeAttr(item.id)}')">Renombrar</button>
+        ${item.activo === false
+          ? `<button class="btn-primary" onclick="setSubcategoryActive('${escapeAttr(item.id)}', true)">Reactivar</button>`
+          : `<button class="btn-danger" onclick="setSubcategoryActive('${escapeAttr(item.id)}', false)">Archivar</button>`}
+      </td>
+    </tr>`).join('') : '<tr><td colspan="5" class="small">Todavía no hay subcategorías guardadas.</td></tr>';
+  document.getElementById('subcat-count-badge').textContent = `${rows.length} subcategoría(s)`;
+}
+
+function createStableSubcategoryId(){
+  const random = window.crypto && typeof window.crypto.randomUUID === 'function'
+    ? window.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `subcat-${random}`;
+}
+
+function createSubcategory(){
+  const categoria = document.getElementById('subcat-category').value.trim();
+  const nombre = document.getElementById('subcat-name').value.trim();
+  if(!categoria){ alert('Elegí una categoría.'); return; }
+  if(!nombre){ alert('Escribí un nombre para la subcategoría.'); return; }
+  const existing = subcategories.find(item => item.categoria === categoria && normalize(item.nombre) === normalize(nombre));
+  if(existing){
+    if(existing.activo === false){
+      existing.activo = true;
+      markDirty();
+      document.getElementById('subcat-name').value = '';
+      renderSubcategoryManager();
+      alert(`Se reactivó "${existing.nombre}".`);
+    } else {
+      alert(`Ya existe "${existing.nombre}" dentro de "${categoria}".`);
+    }
+    return;
+  }
+  subcategories.push({ id: createStableSubcategoryId(), categoria, nombre, activo: true });
+  document.getElementById('subcat-name').value = '';
+  markDirty();
+  renderSubcategoryManager();
+  alert(`Subcategoría "${nombre}" creada. No olvides guardar en GitHub.`);
+}
+
+function renameSubcategory(id){
+  const item = getSubcategoryById(id);
+  if(!item) return;
+  const nextName = prompt(`Nuevo nombre para "${item.nombre}":`, item.nombre);
+  if(nextName === null) return;
+  const normalized = nextName.trim();
+  if(!normalized){ alert('El nombre no puede quedar vacío.'); return; }
+  const duplicate = subcategories.find(other => other.id !== id && other.categoria === item.categoria && normalize(other.nombre) === normalize(normalized));
+  if(duplicate){ alert(`Ya existe "${duplicate.nombre}" dentro de "${item.categoria}".`); return; }
+  item.nombre = normalized;
+  markDirty();
+  renderSubcategoryManager();
+  renderTable();
+}
+
+function setSubcategoryActive(id, active){
+  const item = getSubcategoryById(id);
+  if(!item) return;
+  if(!active && subcategoryCount(id) > 0 && !confirm(`"${item.nombre}" tiene ${subcategoryCount(id)} producto(s). ¿Querés archivarla igual? Los productos conservarán su identificador y se podrán revisar después.`)) return;
+  item.activo = active;
+  markDirty();
+  renderSubcategoryManager();
+}
+
 // ---- Proveedor manager (asignación en bloque por marca) ----
 function renderProveedorManager(){
   const q = normalize(document.getElementById('prov-search').value);
@@ -583,7 +798,7 @@ function openProductForm(idx){
   const isNew = idx === null;
   const p = isNew ? {
     codigo:'', descripcion:'', precio:'', precio_usd:null, precio_unitario:'',
-    categoria:'', marcas:[], modalidad:'', imagenes:[], moneda:'ARS', activo:true, proveedor:null
+    categoria:'', subcategoria_id:'', marcas:[], modalidad:'', imagenes:[], moneda:'ARS', activo:true, proveedor:null
   } : products[idx];
 
   const root = document.getElementById('modal-root');
@@ -610,6 +825,10 @@ function openProductForm(idx){
           </select>
           <input id="f-categoria-nuevo" placeholder="Escribí la nueva categoría" value="${!getDistinctValues('categoria').includes(p.categoria||'') ? escapeAttr(p.categoria||'') : ''}" style="margin-top:6px;display:${!getDistinctValues('categoria').includes(p.categoria||'') && p.categoria ? 'block':'none'};" />
         </div>
+         <div>
+           <label>Subcategoría (opcional)</label>
+           <select id="f-subcategoria"></select>
+         </div>
         <div><label>Marca(s), separadas por coma</label><input id="f-marcas" value="${escapeAttr((p.marcas||[]).join(', '))}" /></div>
       </div>
       <div class="row">
@@ -630,7 +849,8 @@ function openProductForm(idx){
       </div>
       <p class="small" style="margin-top:10px;">Esto solo actualiza la lista en memoria. Tocá "Guardar todos los cambios en GitHub" para publicarlo de verdad.</p>
     </div>
-  </div>`;
+   </div>`;
+  renderProductSubcategoryOptions(p.subcategoria_id || '');
 }
 
 function handleCategorySelect(selectId){
@@ -638,6 +858,21 @@ function handleCategorySelect(selectId){
   const nuevoInput = document.getElementById(selectId + '-nuevo');
   nuevoInput.style.display = select.value === '__nuevo__' ? 'block' : 'none';
   if(select.value === '__nuevo__') nuevoInput.focus();
+  if(selectId === 'f-categoria') renderProductSubcategoryOptions('');
+}
+
+function getSelectedProductCategory(){
+  return getCategoryFieldValue('f-categoria');
+}
+
+function renderProductSubcategoryOptions(selectedId){
+  const select = document.getElementById('f-subcategoria');
+  if(!select) return;
+  const categoria = getSelectedProductCategory();
+  const options = subcategories.filter(item => item.activo !== false && item.categoria === categoria);
+  select.innerHTML = '<option value="">— Sin subcategoría —</option>'
+    + options.map(item => `<option value="${escapeAttr(item.id)}">${item.nombre}</option>`).join('');
+  if(options.some(item => item.id === selectedId)) select.value = selectedId;
 }
 
 function getCategoryFieldValue(selectId){
@@ -669,6 +904,7 @@ async function saveProductForm(idx){
     precio: precioVal === '' ? null : Number(precioVal),
     precio_usd: null,
     categoria: getCategoryFieldValue('f-categoria'),
+     subcategoria_id: document.getElementById('f-subcategoria').value || '',
     marcas,
     modalidad: document.getElementById('f-modalidad').value.trim(),
     precio_unitario: precioUnitVal === '' ? null : Number(precioUnitVal),
@@ -696,6 +932,48 @@ async function saveProductForm(idx){
   rebuildIndexes();
   closeModal();
   renderTable();
+}
+
+function openBulkSubcategoryAssign(){
+  const codes = Array.from(selectedProductCodes);
+  if(!codes.length){ alert('Seleccioná al menos un producto desde la tabla.'); return; }
+  const selected = products.filter(p => selectedProductCodes.has(p.codigo));
+  const categories = Array.from(new Set(selected.map(p => (p.categoria || '').trim()).filter(Boolean)));
+  if(categories.length !== 1){
+    alert('Para asignar una subcategoría en bloque, todos los productos seleccionados deben pertenecer a la misma categoría.');
+    return;
+  }
+  const category = categories[0];
+  const options = subcategories.filter(item => item.activo !== false && item.categoria === category);
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+  <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <h2>Asignar subcategoría</h2>
+      <p class="small">${selected.length} producto(s) de la categoría <b>${category}</b>.</p>
+      <label>Subcategoría</label>
+      <select id="bulk-subcategory">
+        <option value="">— Quitar subcategoría —</option>
+        ${options.map(item => `<option value="${escapeAttr(item.id)}">${item.nombre}</option>`).join('')}
+      </select>
+      ${options.length ? '' : '<p class="small">Esta categoría todavía no tiene subcategorías. Creala primero desde la pestaña “Subcategorías”.</p>'}
+      <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-primary" onclick="applyBulkSubcategoryAssign()">Aplicar a seleccionados</button>
+        <button class="btn-ghost" onclick="closeModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function applyBulkSubcategoryAssign(){
+  const subcategoria_id = document.getElementById('bulk-subcategory').value;
+  const selected = products.filter(p => selectedProductCodes.has(p.codigo));
+  selected.forEach(p => { p.subcategoria_id = subcategoria_id; });
+  markDirty();
+  selectedProductCodes.clear();
+  closeModal();
+  renderTable();
+  alert(`${selected.length} producto(s) actualizados. No olvides guardar en GitHub.`);
 }
 
 function fileToBase64(file){
@@ -750,9 +1028,28 @@ async function commitChanges(){
     }
     const json = await res.json();
     dataSha = json.content.sha;
+    statusEl.innerHTML = '<div class="status info">Guardando subcategorias.json...</div>';
+    const taxonomyContent = btoa(unescape(encodeURIComponent(JSON.stringify(subcategories, null, 2))));
+    const taxonomyUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${SUBCATEGORIES_PATH}`;
+    const taxonomyRes = await fetch(taxonomyUrl, {
+      method: 'PUT',
+      headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Admin: actualización de subcategorías',
+        content: taxonomyContent,
+        ...(subcategoriesSha ? { sha: subcategoriesSha } : {}),
+        branch: BRANCH,
+      }),
+    });
+    if(!taxonomyRes.ok){
+      const errBody = await taxonomyRes.json().catch(()=>({}));
+      throw new Error('No se pudieron guardar las subcategorías: ' + (errBody.message||('HTTP '+taxonomyRes.status)));
+    }
+    const taxonomyJson = await taxonomyRes.json();
+    subcategoriesSha = taxonomyJson.content.sha;
     dirty = false;
     updateDirtyIndicator();
-    statusEl.innerHTML = '<div class="status ok">Listo, guardado en GitHub. Cloudflare va a redeployar en un minuto.</div>';
+    statusEl.innerHTML = '<div class="status ok">Listo, productos y subcategorías guardados en GitHub. Cloudflare va a redeployar en un minuto.</div>';
   } catch(err){
     statusEl.innerHTML = `<div class="status err">Error al guardar: ${err.message}</div>`;
   }
