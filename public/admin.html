@@ -51,6 +51,12 @@
   .count-badge{font-size:11px;color:var(--muted);}
   a.link{color:var(--petrol);}
   .imgpick{display:flex;align-items:center;gap:8px;}
+  .cat-order-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);background:#fff;cursor:grab;user-select:none;}
+  .cat-order-item:last-child{border-bottom:none;}
+  .cat-order-item.dragging{opacity:.4;}
+  .cat-order-item .handle{color:var(--muted);font-size:14px;line-height:1;}
+  .cat-order-item .idx{font-size:11px;color:var(--muted);min-width:18px;}
+  .cat-order-item .name{flex:1;font-size:13px;}
 </style>
 </head>
 <body>
@@ -143,6 +149,13 @@
           <p class="small" id="cat-selected-count" style="margin-top:8px;"></p>
         </div>
         <p class="small">Esto edita en memoria todos los productos de las categorías tildadas. Como siempre, no se publica hasta que apretás "Guardar todos los cambios en GitHub" abajo.</p>
+
+        <div class="card" style="margin-top:14px;background:#faf8f3;">
+          <label>Orden de los botones de categorías en el buscador</label>
+          <p class="small" style="margin-top:0;">Arrastrá para reordenar. Así se van a mostrar los botones de categorías en el sitio. Las categorías nuevas que todavía no ordenaste aparecen al final, en orden alfabético.</p>
+          <ul id="cat-order-list" style="list-style:none;padding:0;margin:10px 0 0;max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:8px;"></ul>
+          <p class="small" id="cat-order-status" style="margin-top:8px;"></p>
+        </div>
       </div>
 
       <div id="tab-subcategorias" style="display:none;">
@@ -217,6 +230,7 @@ const REPO_NAME = 'buscador-v2';
 const BRANCH = 'main';
 const DATA_PATH = 'public/data/productos.json';
 const SUBCATEGORIES_PATH = 'public/data/subcategorias.json';
+const CATEGORY_ORDER_PATH = 'public/data/categorias_orden.json';
 const FOTOS_PATH = 'public/fotos';
 const LS_AUTH = 'pv2_admin_auth_ok';
 const LS_TOKEN = 'pv2_gh_token';
@@ -225,6 +239,8 @@ let products = [];
 let dataSha = null;
 let subcategories = [];
 let subcategoriesSha = null;
+let categoryOrder = [];
+let categoryOrderSha = null;
 let dirty = false;
 let pendingPhotoUploads = {}; // codigo -> {base64, ext}
 let selectedProductCodes = new Set();
@@ -310,6 +326,7 @@ async function loadCatalog(forceFresh){
     }
     products = JSON.parse(decoded);
      await loadSubcategories(forceFresh);
+     await loadCategoryOrder(forceFresh);
     dirty = false;
      selectedProductCodes = new Set();
     updateDirtyIndicator();
@@ -348,6 +365,32 @@ async function loadSubcategories(forceFresh){
   }
   const parsed = JSON.parse(decoded);
   subcategories = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.subcategorias) ? parsed.subcategorias : []);
+}
+
+async function loadCategoryOrder(forceFresh){
+  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${CATEGORY_ORDER_PATH}?ref=${BRANCH}${forceFresh ? '&_=' + Date.now() : ''}`;
+  const headers = getToken() ? ghHeaders() : {};
+  const res = await fetch(url, { headers });
+  if(res.status === 404){
+    categoryOrder = [];
+    categoryOrderSha = null;
+    return;
+  }
+  if(!res.ok) throw new Error('No se pudo cargar el orden de categorías. GitHub respondió ' + res.status + '.');
+  const json = await res.json();
+  categoryOrderSha = json.sha;
+  let decoded;
+  if(json.content){
+    decoded = decodeURIComponent(escape(atob(json.content.replace(/\n/g,''))));
+  } else if(json.download_url){
+    const rawRes = await fetch(json.download_url + (forceFresh ? '?_=' + Date.now() : ''));
+    if(!rawRes.ok) throw new Error('No se pudo descargar el orden de categorías.');
+    decoded = await rawRes.text();
+  } else {
+    throw new Error('El archivo de orden de categorías no tiene contenido legible.');
+  }
+  const parsed = JSON.parse(decoded);
+  categoryOrder = Array.isArray(parsed) ? parsed.filter(v => typeof v === 'string') : [];
 }
 
 function normalize(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
@@ -503,6 +546,7 @@ function renderCategoryManager(){
     + '<option value="__nuevo__">+ Nombre nuevo...</option>';
   document.getElementById('cat-new-name').value = '';
   document.getElementById('cat-new-name').style.display = 'none';
+  renderCategoryOrderList();
 }
 
 function handleCatNewNameSelect(){
@@ -516,6 +560,60 @@ function handleCatNewNameSelect(){
     input.style.display = 'none';
     input.value = select.value;
   }
+}
+
+function getOrderedCategoryList(){
+  const present = activeCategories();
+  const rank = new Map(categoryOrder.map((name, i) => [name, i]));
+  return [...present].sort((a, b) => {
+    const ra = rank.has(a) ? rank.get(a) : Infinity;
+    const rb = rank.has(b) ? rank.get(b) : Infinity;
+    if(ra !== rb) return ra - rb;
+    return a.localeCompare(b, 'es');
+  });
+}
+
+let dragOrderName = null;
+
+function renderCategoryOrderList(){
+  const list = document.getElementById('cat-order-list');
+  if(!list) return;
+  const ordered = getOrderedCategoryList();
+  list.innerHTML = ordered.length
+    ? ordered.map((name, i) => `
+      <li class="cat-order-item" draggable="true" data-name="${escapeAttr(name)}">
+        <span class="handle">⠿</span><span class="idx">${i + 1}</span><span class="name">${name}</span>
+      </li>`).join('')
+    : '<li class="small" style="padding:10px;">No hay categorías todavía.</li>';
+  document.getElementById('cat-order-status').textContent = categoryOrder.length
+    ? 'Orden personalizado guardado.'
+    : 'Sin orden personalizado: se muestran alfabéticamente.';
+
+  list.querySelectorAll('.cat-order-item').forEach(li => {
+    li.addEventListener('dragstart', () => {
+      dragOrderName = li.dataset.name;
+      li.classList.add('dragging');
+    });
+    li.addEventListener('dragend', () => {
+      li.classList.remove('dragging');
+      dragOrderName = null;
+    });
+    li.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const dragging = list.querySelector('.dragging');
+      if(!dragging || dragging === li) return;
+      const rect = li.getBoundingClientRect();
+      const before = (e.clientY - rect.top) < rect.height / 2;
+      list.insertBefore(dragging, before ? li : li.nextSibling);
+    });
+    li.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const names = Array.from(list.querySelectorAll('.cat-order-item')).map(el => el.dataset.name).filter(Boolean);
+      categoryOrder = names;
+      markDirty();
+      renderCategoryOrderList();
+    });
+  });
 }
 
 function toggleAllCategories(checked){
@@ -634,6 +732,7 @@ function renderSubcategoryManager(){
         ${item.activo === false
           ? `<button class="btn-primary" onclick="setSubcategoryActive('${escapeAttr(item.id)}', true)">Reactivar</button>`
           : `<button class="btn-danger" onclick="setSubcategoryActive('${escapeAttr(item.id)}', false)">Archivar</button>`}
+        <button class="btn-danger" onclick="deleteSubcategory('${escapeAttr(item.id)}')">Eliminar</button>
       </td>
     </tr>`).join('') : '<tr><td colspan="5" class="small">Todavía no hay subcategorías guardadas.</td></tr>';
   document.getElementById('subcat-count-badge').textContent = `${rows.length} subcategoría(s)`;
@@ -693,6 +792,24 @@ function setSubcategoryActive(id, active){
   item.activo = active;
   markDirty();
   renderSubcategoryManager();
+}
+
+function deleteSubcategory(id){
+  const item = getSubcategoryById(id);
+  if(!item) return;
+  const count = subcategoryCount(id);
+  const warning = count > 0
+    ? `"${item.nombre}" tiene ${count} producto(s) vinculados. Si la eliminás, esos productos quedan sin subcategoría. `
+    : '';
+  if(!confirm(`${warning}¿Eliminar "${item.nombre}" definitivamente? Esta acción no se puede deshacer (a diferencia de "Archivar").`)) return;
+  if(count > 0){
+    products.forEach(p => { if(p.subcategoria_id === id) p.subcategoria_id = ''; });
+  }
+  subcategories = subcategories.filter(s => s.id !== id);
+  markDirty();
+  rebuildIndexes();
+  renderSubcategoryManager();
+  renderTable();
 }
 
 // ---- Proveedor manager (asignación en bloque por marca) ----
@@ -1047,9 +1164,32 @@ async function commitChanges(){
     }
     const taxonomyJson = await taxonomyRes.json();
     subcategoriesSha = taxonomyJson.content.sha;
+
+    statusEl.innerHTML = '<div class="status info">Guardando orden de categorías...</div>';
+    const orderToSave = getOrderedCategoryList();
+    const orderContent = btoa(unescape(encodeURIComponent(JSON.stringify(orderToSave, null, 2))));
+    const orderUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${CATEGORY_ORDER_PATH}`;
+    const orderRes = await fetch(orderUrl, {
+      method: 'PUT',
+      headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Admin: actualización de orden de categorías',
+        content: orderContent,
+        ...(categoryOrderSha ? { sha: categoryOrderSha } : {}),
+        branch: BRANCH,
+      }),
+    });
+    if(!orderRes.ok){
+      const errBody = await orderRes.json().catch(()=>({}));
+      throw new Error('No se pudo guardar el orden de categorías: ' + (errBody.message||('HTTP '+orderRes.status)));
+    }
+    const orderJson = await orderRes.json();
+    categoryOrderSha = orderJson.content.sha;
+    categoryOrder = orderToSave;
+
     dirty = false;
     updateDirtyIndicator();
-    statusEl.innerHTML = '<div class="status ok">Listo, productos y subcategorías guardados en GitHub. Cloudflare va a redeployar en un minuto.</div>';
+    statusEl.innerHTML = '<div class="status ok">Listo, productos, subcategorías y orden de categorías guardados en GitHub. Cloudflare va a redeployar en un minuto.</div>';
   } catch(err){
     statusEl.innerHTML = `<div class="status err">Error al guardar: ${err.message}</div>`;
   }
