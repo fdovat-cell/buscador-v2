@@ -113,7 +113,7 @@
           </select>
           <span class="count-badge" id="count-badge"></span>
           <button class="btn-stamp" onclick="openNewProduct()">+ Nuevo producto</button>
-          <button class="btn-ghost" onclick="openBulkSubcategoryAssign()">Asignar subcategoría</button>
+          <button class="btn-ghost" onclick="openBulkMoveModal()">Mover / recategorizar seleccionados</button>
           <button class="btn-ghost" onclick="clearProductSelection()">Limpiar selección</button>
           <button class="btn-primary" onclick="loadCatalog(true)">Recargar catálogo</button>
         </div>
@@ -127,8 +127,17 @@
       </div>
 
       <div id="tab-categorias" style="display:none;">
-        <p class="small">Tildá una o varias categorías y fusionalas en un solo nombre, o vacialas para sacarles la categoría a esos productos.</p>
-        <div class="row" style="align-items:center;">
+        <p class="small">Creá, renombrá o eliminá categorías desde acá. Podés crear una categoría vacía antes de tener productos: va a estar disponible para elegir al cargar productos y crear subcategorías.</p>
+
+        <div class="card" style="margin-top:14px;background:#faf8f3;">
+          <label>Nueva categoría</label>
+          <div class="row">
+            <div><input type="text" id="cat-create-name" placeholder="Ej: Papelería escolar" /></div>
+            <div style="flex:0 0 auto;"><button class="btn-stamp" onclick="createCategory()">Crear categoría</button></div>
+          </div>
+        </div>
+
+        <div class="row" style="align-items:center;margin-top:14px;">
           <div style="flex:1;"><label>Buscar categoría</label><input type="text" id="cat-search" placeholder="Filtrar por nombre..." oninput="renderCategoryManager()" /></div>
         </div>
         <div style="overflow:auto;max-height:45vh;margin-top:10px;border:1px solid var(--border);border-radius:8px;">
@@ -137,22 +146,25 @@
             <tbody id="cat-table-body"></tbody>
           </table>
         </div>
+        <p class="small">"Renombrar" cambia una categoría sola (y actualiza automáticamente sus subcategorías y el orden de botones). Para renombrar significa lo mismo que fusionar cuando el nombre nuevo coincide con una categoría que ya existe.</p>
+
         <div class="card" style="margin-top:14px;background:#faf8f3;">
-          <label>Nuevo nombre para las categorías tildadas (fusionarlas todas en esta)</label>
+          <label>Fusionar varias categorías tildadas en una sola</label>
+          <p class="small" style="margin-top:0;">Usalo solo cuando tenés dos o más categorías tildadas arriba que en realidad son la misma cosa (ej: "Cuadernos" y "cuadernos ").</p>
           <div class="row">
             <div><select id="cat-new-name-select" onchange="handleCatNewNameSelect()"></select>
               <input type="text" id="cat-new-name" placeholder="Escribí el nombre nuevo" style="margin-top:6px;display:none;" />
             </div>
-            <div style="flex:0 0 auto;"><button class="btn-stamp" onclick="applyCategoryMerge()">Fusionar / renombrar seleccionadas</button></div>
-            <div style="flex:0 0 auto;"><button class="btn-danger" onclick="applyCategoryClear()">Vaciar categoría (dejar sin asignar)</button></div>
+            <div style="flex:0 0 auto;"><button class="btn-stamp" onclick="applyCategoryMerge()">Fusionar seleccionadas</button></div>
+            <div style="flex:0 0 auto;"><button class="btn-danger" onclick="applyCategoryClear()">Vaciar (dejar sin categoría)</button></div>
           </div>
           <p class="small" id="cat-selected-count" style="margin-top:8px;"></p>
         </div>
-        <p class="small">Esto edita en memoria todos los productos de las categorías tildadas. Como siempre, no se publica hasta que apretás "Guardar todos los cambios en GitHub" abajo.</p>
+        <p class="small">Nada de esto se publica hasta que apretás "Guardar todos los cambios en GitHub" abajo.</p>
 
         <div class="card" style="margin-top:14px;background:#faf8f3;">
           <label>Orden de los botones de categorías en el buscador</label>
-          <p class="small" style="margin-top:0;">Arrastrá para reordenar. Así se van a mostrar los botones de categorías en el sitio. Las categorías nuevas que todavía no ordenaste aparecen al final, en orden alfabético.</p>
+          <p class="small" style="margin-top:0;">Arrastrá para reordenar. Así se van a mostrar los botones de categorías en el sitio (las categorías vacías no aparecen como botón hasta que tengan algún producto). Las categorías nuevas que todavía no ordenaste aparecen al final, en orden alfabético.</p>
           <ul id="cat-order-list" style="list-style:none;padding:0;margin:10px 0 0;max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:8px;"></ul>
           <p class="small" id="cat-order-status" style="margin-top:8px;"></p>
         </div>
@@ -503,6 +515,9 @@ function renderCategoryManager(){
     const key = val || '(sin categoría)';
     counts[key] = (counts[key] || 0) + 1;
   });
+  // incluir categorías creadas pero todavía sin productos
+  categoryOrder.forEach(name => { if(!(name in counts)) counts[name] = 0; });
+
   const rows = Object.entries(counts)
     .filter(([name]) => !q || normalize(name).includes(q))
     .sort((a,b) => normalize(a[0]).localeCompare(normalize(b[0]), 'es', { numeric: true }));
@@ -510,21 +525,26 @@ function renderCategoryManager(){
   const tbody = document.getElementById('cat-table-body');
   tbody.innerHTML = '';
   rows.forEach(([name, count]) => {
+    const isPseudo = name === '(sin categoría)';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><input type="checkbox" class="cat-checkbox" value="${escapeAttr(name)}"/></td>
       <td>${name}</td>
       <td>${count}</td>
-      <td><button class="btn-ghost" onclick="viewProductsOfCategory('${escapeAttr(name)}')">Ver productos</button></td>`;
+      <td class="actions-col">
+        <button class="btn-ghost" onclick="viewProductsOfCategory('${escapeAttr(name)}')">Ver productos</button>
+        ${isPseudo ? '' : `<button class="btn-ghost" onclick="renameCategoryPrompt('${escapeAttr(name)}')">Renombrar</button>`}
+        ${(!isPseudo && count === 0) ? `<button class="btn-danger" onclick="deleteEmptyCategory('${escapeAttr(name)}')">Eliminar</button>` : ''}
+      </td>`;
     tbody.appendChild(tr);
   });
   document.querySelectorAll('.cat-checkbox').forEach(cb => cb.addEventListener('change', updateCatSelectedCount));
   document.getElementById('cat-select-all').checked = false;
   updateCatSelectedCount();
 
-  // selector desplegable con categorías vigentes para fusionar/renombrar
+  // selector desplegable con categorías vigentes para fusionar
   const select = document.getElementById('cat-new-name-select');
-  const values = getDistinctValues(field);
+  const values = activeCategories();
   select.innerHTML = '<option value="">— Elegí una categoría vigente —</option>'
     + values.map(v => `<option value="${escapeAttr(v)}">${v}</option>`).join('')
     + '<option value="__nuevo__">+ Nombre nuevo...</option>';
@@ -624,24 +644,101 @@ function updateCatSelectedCount(){
     : 'Ninguna categoría tildada.';
 }
 
+// Renombra/fusiona una o varias categorías (oldNames) en newName, y arrastra
+// consigo a los productos, a las subcategorías asociadas (fusionando las que
+// queden duplicadas dentro de la categoría destino) y al orden de botones.
+// Esto evita que queden subcategorías "huérfanas" apuntando a un nombre viejo.
+function renameCategoryEverywhere(oldNames, newName){
+  newName = newName.trim();
+  if(!newName || !oldNames.length) return 0;
+  const oldSet = new Set(oldNames);
+
+  let affected = 0;
+  products.forEach(p => {
+    const current = (p.categoria || '').toString().trim() || '(sin categoría)';
+    if(oldSet.has(current)){
+      p.categoria = newName;
+      affected++;
+    }
+  });
+
+  // Reetiquetar subcategorías de las categorías viejas hacia la nueva
+  subcategories.forEach(item => {
+    if(oldSet.has(item.categoria)) item.categoria = newName;
+  });
+  // Si dos subcategorías quedaron con el mismo nombre dentro de newName, fusionarlas
+  const byKey = new Map();
+  subcategories = subcategories.filter(item => {
+    if(item.categoria !== newName) return true;
+    const key = normalize(item.nombre);
+    if(byKey.has(key)){
+      const survivor = byKey.get(key);
+      products.forEach(p => { if(p.subcategoria_id === item.id) p.subcategoria_id = survivor.id; });
+      if(item.activo !== false) survivor.activo = true;
+      return false;
+    }
+    byKey.set(key, item);
+    return true;
+  });
+
+  // Mantener la posición en el orden de botones (usa la posición de la primera coincidencia)
+  const insertAt = categoryOrder.findIndex(name => oldSet.has(name));
+  categoryOrder = categoryOrder.filter(name => !oldSet.has(name) && name !== newName);
+  categoryOrder.splice(insertAt === -1 ? categoryOrder.length : insertAt, 0, newName);
+
+  return affected;
+}
+
+function renameCategoryPrompt(oldName){
+  const nextName = prompt(`Nuevo nombre para "${oldName}":`, oldName);
+  if(nextName === null) return;
+  const newName = nextName.trim();
+  if(!newName){ alert('El nombre no puede quedar vacío.'); return; }
+  if(newName === oldName) return;
+  const affected = renameCategoryEverywhere([oldName], newName);
+  markDirty();
+  rebuildIndexes();
+  renderCategoryManager();
+  renderSubcategoryManager();
+  renderTable();
+  alert(`Listo: "${oldName}" ahora es "${newName}"${affected ? ` (${affected} producto(s))` : ''}.`);
+}
+
+function createCategory(){
+  const input = document.getElementById('cat-create-name');
+  const name = input.value.trim();
+  if(!name){ alert('Escribí un nombre para la categoría.'); return; }
+  const existing = activeCategories().find(n => normalize(n) === normalize(name));
+  if(existing){ alert(`Ya existe la categoría "${existing}".`); return; }
+  categoryOrder.push(name);
+  markDirty();
+  input.value = '';
+  renderCategoryManager();
+  alert(`Categoría "${name}" creada. Ya la podés elegir al cargar productos o crear subcategorías. No olvides guardar en GitHub.`);
+}
+
+function deleteEmptyCategory(name){
+  const relatedSubcats = subcategories.filter(s => s.categoria === name);
+  if(relatedSubcats.length && !confirm(`"${name}" tiene ${relatedSubcats.length} subcategoría(s) creada(s) sin productos todavía. ¿Eliminar la categoría junto con esas subcategorías?`)) return;
+  subcategories = subcategories.filter(s => s.categoria !== name);
+  categoryOrder = categoryOrder.filter(n => n !== name);
+  markDirty();
+  renderCategoryManager();
+  renderSubcategoryManager();
+  alert(`Categoría "${name}" eliminada.`);
+}
+
 function applyCategoryMerge(){
-  const field = 'categoria';
   const selected = getSelectedCategories();
   const newName = document.getElementById('cat-new-name').value.trim();
   if(!selected.length){ alert('Tildá al menos una categoría.'); return; }
   if(!newName){ alert('Escribí el nombre nuevo para fusionar/renombrar.'); return; }
-  let affected = 0;
-  products.forEach(p => {
-    const current = (p[field] || '').toString().trim() || '(sin categoría)';
-    if(selected.includes(current)){
-      p[field] = newName;
-      affected++;
-    }
-  });
+  const affected = renameCategoryEverywhere(selected, newName);
   markDirty();
   rebuildIndexes();
   document.getElementById('cat-new-name').value = '';
   renderCategoryManager();
+  renderSubcategoryManager();
   renderTable();
   alert(`Listo: ${affected} producto(s) actualizados a "${newName}". No olvides guardar en GitHub.`);
 }
@@ -650,7 +747,7 @@ function applyCategoryClear(){
   const field = 'categoria';
   const selected = getSelectedCategories();
   if(!selected.length){ alert('Tildá al menos una categoría.'); return; }
-  if(!confirm(`¿Vaciar el campo "${field}" en los productos de ${selected.length} categoría(s) tildada(s)?`)) return;
+  if(!confirm(`¿Vaciar la categoría en los productos de ${selected.length} categoría(s) tildada(s)? Las subcategorías de esas categorías van a quedar sin productos (podés archivarlas o eliminarlas después desde "Subcategorías").`)) return;
   let affected = 0;
   products.forEach(p => {
     const current = (p[field] || '').toString().trim() || '(sin categoría)';
@@ -667,8 +764,11 @@ function applyCategoryClear(){
 }
 
 // ---- Subcategory manager ----
+// Unión de categorías presentes en productos + categorías creadas vacías (guardadas en categoryOrder)
 function activeCategories(){
-  return getDistinctValues('categoria');
+  const set = new Set(getDistinctValues('categoria'));
+  categoryOrder.forEach(name => { if(name) set.add(name); });
+  return Array.from(set).sort((a,b) => a.localeCompare(b, 'es'));
 }
 
 function subcategoryCount(id){
@@ -921,10 +1021,10 @@ function openProductForm(idx){
           <label>Categoría</label>
           <select id="f-categoria" onchange="handleCategorySelect('f-categoria')">
             <option value="">— Sin categoría —</option>
-            ${getDistinctValues('categoria').map(v => `<option value="${escapeAttr(v)}" ${v===(p.categoria||'')?'selected':''}>${v}</option>`).join('')}
-            <option value="__nuevo__" ${!getDistinctValues('categoria').includes(p.categoria||'') && p.categoria ? 'selected' : ''}>+ Nueva categoría...</option>
+            ${activeCategories().map(v => `<option value="${escapeAttr(v)}" ${v===(p.categoria||'')?'selected':''}>${v}</option>`).join('')}
+            <option value="__nuevo__" ${!activeCategories().includes(p.categoria||'') && p.categoria ? 'selected' : ''}>+ Nueva categoría...</option>
           </select>
-          <input id="f-categoria-nuevo" placeholder="Escribí la nueva categoría" value="${!getDistinctValues('categoria').includes(p.categoria||'') ? escapeAttr(p.categoria||'') : ''}" style="margin-top:6px;display:${!getDistinctValues('categoria').includes(p.categoria||'') && p.categoria ? 'block':'none'};" />
+          <input id="f-categoria-nuevo" placeholder="Escribí la nueva categoría" value="${!activeCategories().includes(p.categoria||'') ? escapeAttr(p.categoria||'') : ''}" style="margin-top:6px;display:${!activeCategories().includes(p.categoria||'') && p.categoria ? 'block':'none'};" />
         </div>
          <div>
            <label>Subcategoría (opcional)</label>
@@ -1035,44 +1135,144 @@ async function saveProductForm(idx){
   renderTable();
 }
 
-function openBulkSubcategoryAssign(){
-  const codes = Array.from(selectedProductCodes);
-  if(!codes.length){ alert('Seleccioná al menos un producto desde la tabla.'); return; }
+// Modal unificado: con los productos tildados en la tabla, permite en una sola
+// acción cambiar la categoría destino y, en el mismo paso, elegir una subcategoría
+// existente o crear una nueva (sin tener que ir antes a la pestaña Subcategorías).
+function openBulkMoveModal(){
   const selected = products.filter(p => selectedProductCodes.has(p.codigo));
+  if(!selected.length){ alert('Seleccioná al menos un producto desde la tabla.'); return; }
   const categories = Array.from(new Set(selected.map(p => (p.categoria || '').trim()).filter(Boolean)));
-  if(categories.length !== 1){
-    alert('Para asignar una subcategoría en bloque, todos los productos seleccionados deben pertenecer a la misma categoría.');
-    return;
-  }
-  const category = categories[0];
-  const options = subcategories.filter(item => item.activo !== false && item.categoria === category);
+  const currentCategory = categories.length === 1 ? categories[0] : '';
   const root = document.getElementById('modal-root');
   root.innerHTML = `
   <div class="modal-bg" onclick="if(event.target===this) closeModal()">
     <div class="modal">
-      <h2>Asignar subcategoría</h2>
-      <p class="small">${selected.length} producto(s) de la categoría <b>${category}</b>.</p>
-      <label>Subcategoría</label>
-      <select id="bulk-subcategory">
-        <option value="">— Quitar subcategoría —</option>
-        ${options.map(item => `<option value="${escapeAttr(item.id)}">${item.nombre}</option>`).join('')}
+      <h2>Mover / recategorizar seleccionados</h2>
+      <p class="small">${selected.length} producto(s) seleccionados${categories.length === 1 ? ` · todos en <b>${currentCategory}</b>` : (categories.length > 1 ? ' · en categorías distintas entre sí' : '')}.</p>
+      <label>Categoría destino</label>
+      <select id="bulk-move-categoria" onchange="handleBulkMoveCategorySelect()">
+        <option value="">— No cambiar categoría —</option>
+        ${activeCategories().map(v => `<option value="${escapeAttr(v)}" ${v === currentCategory ? 'selected' : ''}>${v}</option>`).join('')}
+        <option value="__nuevo__">+ Nueva categoría...</option>
       </select>
-      ${options.length ? '' : '<p class="small">Esta categoría todavía no tiene subcategorías. Creala primero desde la pestaña “Subcategorías”.</p>'}
+      <input id="bulk-move-categoria-nuevo" placeholder="Escribí la nueva categoría" style="margin-top:6px;display:none;" oninput="renderBulkMoveSubcategoryOptions()" />
+
+      <label style="margin-top:14px;">Subcategoría</label>
+      <select id="bulk-move-subcategoria"></select>
+      <input id="bulk-move-subcategoria-nuevo" placeholder="Escribí el nombre de la subcategoría nueva" style="margin-top:6px;display:none;" />
+      <p class="small" id="bulk-move-subcat-hint" style="margin-top:6px;"></p>
+
       <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn-primary" onclick="applyBulkSubcategoryAssign()">Aplicar a seleccionados</button>
+        <button class="btn-primary" onclick="applyBulkMove()">Aplicar a seleccionados</button>
         <button class="btn-ghost" onclick="closeModal()">Cancelar</button>
       </div>
     </div>
   </div>`;
+  renderBulkMoveSubcategoryOptions();
 }
 
-function applyBulkSubcategoryAssign(){
-  const subcategoria_id = document.getElementById('bulk-subcategory').value;
+function handleBulkMoveCategorySelect(){
+  const select = document.getElementById('bulk-move-categoria');
+  const nuevoInput = document.getElementById('bulk-move-categoria-nuevo');
+  nuevoInput.style.display = select.value === '__nuevo__' ? 'block' : 'none';
+  if(select.value === '__nuevo__') nuevoInput.focus();
+  renderBulkMoveSubcategoryOptions();
+}
+
+// Categoría a la que van a quedar los seleccionados si se confirma el modal tal como está ahora
+function getBulkMoveTargetCategory(){
+  const select = document.getElementById('bulk-move-categoria');
+  if(!select) return '';
+  if(select.value === '__nuevo__') return document.getElementById('bulk-move-categoria-nuevo').value.trim();
+  if(select.value) return select.value;
   const selected = products.filter(p => selectedProductCodes.has(p.codigo));
-  selected.forEach(p => { p.subcategoria_id = subcategoria_id; });
+  const categories = Array.from(new Set(selected.map(p => (p.categoria || '').trim())));
+  return categories.length === 1 ? categories[0] : '';
+}
+
+function renderBulkMoveSubcategoryOptions(){
+  const categoriaEsNueva = document.getElementById('bulk-move-categoria').value === '__nuevo__';
+  const target = getBulkMoveTargetCategory();
+  const select = document.getElementById('bulk-move-subcategoria');
+  const nuevoInput = document.getElementById('bulk-move-subcategoria-nuevo');
+  const hint = document.getElementById('bulk-move-subcat-hint');
+
+  if(!target && !categoriaEsNueva){
+    select.innerHTML = '<option value="">— Elegí antes una categoría destino —</option>';
+    select.disabled = true;
+    nuevoInput.style.display = 'none';
+    hint.textContent = 'Los seleccionados están en categorías distintas: elegí arriba a cuál categoría los movés para poder elegir o crear una subcategoría.';
+    return;
+  }
+  select.disabled = false;
+  const options = categoriaEsNueva ? [] : subcategories.filter(item => item.activo !== false && item.categoria === target);
+  select.innerHTML = '<option value="">— Sin subcategoría —</option>'
+    + options.map(item => `<option value="${escapeAttr(item.id)}">${item.nombre}</option>`).join('')
+    + '<option value="__nuevo__">+ Nueva subcategoría...</option>';
+  select.onchange = () => {
+    nuevoInput.style.display = select.value === '__nuevo__' ? 'block' : 'none';
+    if(select.value === '__nuevo__') nuevoInput.focus();
+  };
+  hint.textContent = categoriaEsNueva
+    ? 'Como la categoría es nueva, también podés crear la subcategoría de una.'
+    : (options.length ? '' : 'Esta categoría todavía no tiene subcategorías: podés crear una nueva ahí mismo.');
+}
+
+function applyBulkMove(){
+  const selected = products.filter(p => selectedProductCodes.has(p.codigo));
+  if(!selected.length){ alert('No hay productos seleccionados.'); return; }
+
+  const categoriaSelect = document.getElementById('bulk-move-categoria');
+  let targetCategory = null; // null = no tocar la categoría
+  if(categoriaSelect.value === '__nuevo__'){
+    targetCategory = document.getElementById('bulk-move-categoria-nuevo').value.trim();
+    if(!targetCategory){ alert('Escribí el nombre de la nueva categoría.'); return; }
+  } else if(categoriaSelect.value){
+    targetCategory = categoriaSelect.value;
+  }
+
+  const subSelect = document.getElementById('bulk-move-subcategoria');
+  let subcategoriaId = null; // null = no tocar subcategoría; '' = quitar
+  if(!subSelect.disabled){
+    if(subSelect.value === '__nuevo__'){
+      const nombre = document.getElementById('bulk-move-subcategoria-nuevo').value.trim();
+      if(!nombre){ alert('Escribí el nombre de la nueva subcategoría.'); return; }
+      const effectiveCategory = targetCategory || getBulkMoveTargetCategory();
+      if(!effectiveCategory){ alert('Falta definir la categoría destino para poder crear la subcategoría.'); return; }
+      const existing = subcategories.find(item => item.categoria === effectiveCategory && normalize(item.nombre) === normalize(nombre));
+      if(existing){
+        if(existing.activo === false) existing.activo = true;
+        subcategoriaId = existing.id;
+      } else {
+        const newSub = { id: createStableSubcategoryId(), categoria: effectiveCategory, nombre, activo: true };
+        subcategories.push(newSub);
+        subcategoriaId = newSub.id;
+      }
+    } else {
+      subcategoriaId = subSelect.value; // puede ser '' (sin subcategoría)
+    }
+  }
+
+  if(targetCategory === null && subcategoriaId === null){
+    alert('No cambiaste nada: elegí una categoría destino y/o una subcategoría.');
+    return;
+  }
+
+  selected.forEach(p => {
+    if(targetCategory !== null) p.categoria = targetCategory;
+    if(subcategoriaId !== null) p.subcategoria_id = subcategoriaId;
+  });
+
+  if(targetCategory && !activeCategories().includes(targetCategory)){
+    categoryOrder.push(targetCategory);
+  }
+
   markDirty();
+  rebuildIndexes();
   selectedProductCodes.clear();
   closeModal();
+  renderCategoryManager();
+  renderSubcategoryManager();
   renderTable();
   alert(`${selected.length} producto(s) actualizados. No olvides guardar en GitHub.`);
 }
