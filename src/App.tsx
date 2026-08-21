@@ -94,6 +94,7 @@ function getCurrency(product: Product) {
 }
 
 function currencyLabel(currency: string) {
+  if (currency === 'UYU') return '$ UYU';
   return currency === 'USD' ? 'USD' : '$';
 }
 
@@ -103,7 +104,7 @@ function getPrice(product: Product, overrides: Record<string, number>) {
 }
 
 function formatPrice(value: number, currency: string) {
-  const amount = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+  const amount = new Intl.NumberFormat(currency === 'UYU' ? 'es-UY' : 'es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
   return `${currencyLabel(currency)} ${amount}`;
 }
 
@@ -241,7 +242,7 @@ function CategoryBrowser({
 }
 
 function compactPrice(value: number, currency: string) {
-  return new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat(currency === 'UYU' ? 'es-UY' : 'es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
 
 function ProductImage({ product, detail = false, imageIndex = 0 }: { product: Product; detail?: boolean; imageIndex?: number }) {
