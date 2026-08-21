@@ -50,7 +50,11 @@ type CategorySummary = { label: string; count: number; subcategories: Subcategor
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL;
-const assetUrl = (path: string) => `${basePath}${path.replace(/^\/+/, '')}`;
+// Fotos servidas desde Supabase Storage (bucket publico "fotos-productos"),
+// ya no desde el build de Cloudflare Pages: asi se pueden agregar/actualizar
+// fotos sin disparar un rebuild del sitio.
+const IMAGES_BASE_URL = 'https://xxlgsipmocwizhafinwr.supabase.co/storage/v1/object/public/fotos-productos';
+const assetUrl = (path: string) => `${IMAGES_BASE_URL}/${path.replace(/^\/+/, '').split('/').pop()}`;
 
 // Datos de catálogo (productos, subcategorías, orden de categorías) se sirven
 // desde Supabase Storage, no desde el bundle de Cloudflare Pages: así el admin
@@ -90,9 +94,7 @@ function getCurrency(product: Product) {
 }
 
 function currencyLabel(currency: string) {
-     if (currency === 'UYU') return '$ UYU';
-     return currency === 'USD' ? 'USD' : '$';
-   }
+  return currency === 'USD' ? 'USD' : '$';
 }
 
 function getPrice(product: Product, overrides: Record<string, number>) {
@@ -101,7 +103,7 @@ function getPrice(product: Product, overrides: Record<string, number>) {
 }
 
 function formatPrice(value: number, currency: string) {
-  const amount = new Intl.NumberFormat(currency === 'UYU' ? 'es-UY' : 'es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+  const amount = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
   return `${currencyLabel(currency)} ${amount}`;
 }
 
@@ -239,7 +241,7 @@ function CategoryBrowser({
 }
 
 function compactPrice(value: number, currency: string) {
-  return new Intl.NumberFormat(currency === 'UYU' ? 'es-UY' : 'es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
 
 function ProductImage({ product, detail = false, imageIndex = 0 }: { product: Product; detail?: boolean; imageIndex?: number }) {
