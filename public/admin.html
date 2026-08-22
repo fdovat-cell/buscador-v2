@@ -75,7 +75,7 @@
   <header>
     <div>
       <h1>Admin · Pel Sas buscador</h1>
-      <div class="sub">Editar precios, altas, bajas y fotos — datos a Supabase, fotos a GitHub</div>
+      <div class="sub">Editar precios, altas, bajas y fotos — todo a Supabase, al toque</div>
     </div>
     <div>
       <button class="btn-ghost" onclick="logout()">Salir</button>
@@ -83,17 +83,6 @@
   </header>
 
   <div class="wrap">
-
-    <div class="card" id="token-card">
-      <label>Token de GitHub (Personal Access Token, con permiso "repo") — solo hace falta para subir fotos</label>
-      <div class="row">
-        <div><input type="password" id="gh-token" placeholder="ghp_xxxxxxxxxxxx" /></div>
-        <div style="flex:0 0 auto;"><button class="btn-primary" onclick="saveToken()">Guardar token</button></div>
-      </div>
-      <p class="small">Se guarda solo en este navegador (nunca se envía a ningún lado más que a GitHub). Lo necesitás una sola vez.
-        <br>Si no tenés uno: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained → dale acceso de lectura/escritura de "Contents" solo al repo <b>buscador-v2</b>.</p>
-      <div id="token-status" class="status info" style="display:none;"></div>
-    </div>
 
     <div class="card">
         <div class="tabs" style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
@@ -160,7 +149,7 @@
           </div>
           <p class="small" id="cat-selected-count" style="margin-top:8px;"></p>
         </div>
-        <p class="small">Nada de esto se publica hasta que apretás "Guardar todos los cambios en GitHub" abajo.</p>
+        <p class="small">Nada de esto se publica hasta que apretás "Guardar todos los cambios" abajo.</p>
 
         <div class="card" style="margin-top:14px;background:#faf8f3;">
           <label>Orden de los botones de categorías en el buscador</label>
@@ -219,12 +208,12 @@
           </div>
           <p class="small" id="prov-selected-count" style="margin-top:8px;"></p>
         </div>
-        <p class="small">Esto edita en memoria todos los productos de las marcas tildadas. Como siempre, no se publica hasta que apretás "Guardar todos los cambios en GitHub" abajo.</p>
+        <p class="small">Esto edita en memoria todos los productos de las marcas tildadas. Como siempre, no se publica hasta que apretás "Guardar todos los cambios" abajo.</p>
       </div>
     </div>
 
     <div class="card">
-      <button class="btn-primary" onclick="commitChanges()">💾 Guardar todos los cambios en GitHub</button>
+      <button class="btn-primary" onclick="commitChanges()">💾 Guardar todos los cambios</button>
       <span id="dirty-indicator" class="small" style="margin-left:10px;"></span>
       <div id="commit-status" style="margin-top:10px;"></div>
     </div>
@@ -237,20 +226,22 @@
 
 <script>
 const PASSWORD_HASH = '13bba3a9100f697688ae48e23a85be0f2eac6df21980483bc32bdb1f33e548e1';
-const REPO_OWNER = 'fdovat-cell';
-const REPO_NAME = 'buscador-v2';
-const BRANCH = 'main';
-const FOTOS_PATH = 'public/fotos';
 const LS_AUTH = 'pv2_admin_auth_ok';
-const LS_TOKEN = 'pv2_gh_token';
 
-// Datos (productos, subcategorías, orden de categorías) viven en Supabase
-// Storage, no en el repo: se guardan al toque, sin esperar el rebuild de
-// Cloudflare. Las fotos siguen yendo a GitHub (ver FOTOS_PATH arriba).
-// Completar con los datos del proyecto de Supabase:
+// Datos (productos, subcategorías, orden de categorías) y fotos viven en
+// Supabase Storage, no en el repo: todo se guarda al toque, sin esperar
+// ningún rebuild de Cloudflare.
 const SUPABASE_URL = 'https://xxlgsipmocwizhafinwr.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_tdrE1iMSnvMIMUGLnHz4wg_6r070C_H';
 const DATA_BUCKET = 'catalogo-data';
+const IMAGES_BUCKET = 'fotos-productos';
+function imagesPublicUrl(filename){
+  return `${SUPABASE_URL}/storage/v1/object/public/${IMAGES_BUCKET}/${filename}`;
+}
+function assetThumbUrl(path){
+  const filename = String(path||'').replace(/^\/+/, '').split('/').pop();
+  return filename ? imagesPublicUrl(filename) : '';
+}
 const DATA_FILE = 'productos.json';
 const SUBCATEGORIES_FILE = 'subcategorias.json';
 const CATEGORY_ORDER_FILE = 'categorias_orden.json';
@@ -313,33 +304,7 @@ function logout(){
 function boot(){
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'block';
-  const savedToken = localStorage.getItem(LS_TOKEN);
-  if(savedToken){
-    document.getElementById('gh-token').value = savedToken;
-    setTokenStatus('Token guardado en este navegador.', 'ok');
-  }
   loadCatalog(false);
-}
-
-function saveToken(){
-  const t = document.getElementById('gh-token').value.trim();
-  if(!t){ setTokenStatus('Pegá un token válido.', 'err'); return; }
-  localStorage.setItem(LS_TOKEN, t);
-  setTokenStatus('Token guardado.', 'ok');
-}
-function getToken(){ return localStorage.getItem(LS_TOKEN) || document.getElementById('gh-token').value.trim(); }
-function setTokenStatus(msg, type){
-  const el = document.getElementById('token-status');
-  el.style.display = 'block';
-  el.className = 'status ' + type;
-  el.textContent = msg;
-}
-
-function ghHeaders(){
-  return {
-    'Authorization': 'Bearer ' + getToken(),
-    'Accept': 'application/vnd.github+json',
-  };
 }
 
 async function loadCatalog(forceFresh){
@@ -438,7 +403,7 @@ function renderTable(){
     if(q && !haystack.includes(q)) continue;
     shown++;
     if(shown > 300) continue; // límite de render para no trabar el navegador
-    const img = (p.imagenes && p.imagenes[0]) ? `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/public${p.imagenes[0]}` : '';
+    const img = (p.imagenes && p.imagenes[0]) ? assetThumbUrl(p.imagenes[0]) : '';
     rowsHtml.push(`<tr class="${isActive ? '' : 'inactive'}">
       <td><input type="checkbox" class="product-checkbox" value="${escapeAttr(p.codigo)}" ${selectedProductCodes.has(p.codigo) ? 'checked' : ''} onchange="toggleProductSelection('${escapeAttr(p.codigo)}', this.checked)"/></td>
       <td>${img ? `<img class="thumb" src="${img}" loading="lazy" onerror="this.style.opacity=0.2">` : `<div class="thumb"></div>`}</td>
@@ -714,7 +679,7 @@ function createCategory(){
   markDirty();
   input.value = '';
   renderCategoryManager();
-  alert(`Categoría "${name}" creada. Ya la podés elegir al cargar productos o crear subcategorías. No olvides guardar en GitHub.`);
+  alert(`Categoría "${name}" creada. Ya la podés elegir al cargar productos o crear subcategorías. No olvides guardar los cambios.`);
 }
 
 function deleteEmptyCategory(name){
@@ -740,7 +705,7 @@ function applyCategoryMerge(){
   renderCategoryManager();
   renderSubcategoryManager();
   renderTable();
-  alert(`Listo: ${affected} producto(s) actualizados a "${newName}". No olvides guardar en GitHub.`);
+  alert(`Listo: ${affected} producto(s) actualizados a "${newName}". No olvides guardar los cambios.`);
 }
 
 function applyCategoryClear(){
@@ -760,7 +725,7 @@ function applyCategoryClear(){
   rebuildIndexes();
   renderCategoryManager();
   renderTable();
-  alert(`Listo: ${affected} producto(s) quedaron sin ese campo. No olvides guardar en GitHub.`);
+  alert(`Listo: ${affected} producto(s) quedaron sin ese campo. No olvides guardar los cambios.`);
 }
 
 // ---- Subcategory manager ----
@@ -851,7 +816,7 @@ function createSubcategory(){
   document.getElementById('subcat-name').value = '';
   markDirty();
   renderSubcategoryManager();
-  alert(`Subcategoría "${nombre}" creada. No olvides guardar en GitHub.`);
+  alert(`Subcategoría "${nombre}" creada. No olvides guardar los cambios.`);
 }
 
 function renameSubcategory(id){
@@ -965,7 +930,7 @@ function applyProveedorAssign(){
   rebuildIndexes();
   renderProveedorManager();
   renderTable();
-  alert(`Listo: ${affected} producto(s) quedaron con Proveedor ${num}. No olvides guardar en GitHub.`);
+  alert(`Listo: ${affected} producto(s) quedaron con Proveedor ${num}. No olvides guardar los cambios.`);
 }
 
 function applyProveedorClear(){
@@ -983,7 +948,7 @@ function applyProveedorClear(){
   rebuildIndexes();
   renderProveedorManager();
   renderTable();
-  alert(`Listo: ${affected} producto(s) quedaron sin proveedor. No olvides guardar en GitHub.`);
+  alert(`Listo: ${affected} producto(s) quedaron sin proveedor. No olvides guardar los cambios.`);
 }
 
 function closeModal(){ document.getElementById('modal-root').innerHTML = ''; }
@@ -1038,7 +1003,7 @@ function openProductForm(idx){
       </div>
       <label>Foto</label>
       <div class="imgpick">
-        ${(p.imagenes && p.imagenes[0]) ? `<img class="thumb" src="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/public${p.imagenes[0]}" style="width:50px;height:50px;">` : '<span class="small">Sin foto</span>'}
+        ${(p.imagenes && p.imagenes[0]) ? `<img class="thumb" src="${assetThumbUrl(p.imagenes[0])}" style="width:50px;height:50px;">` : '<span class="small">Sin foto</span>'}
         <input type="file" id="f-foto" accept="image/*" />
       </div>
       <label style="margin-top:14px;"><input type="checkbox" id="f-activo" style="width:auto;" ${p.activo!==false?'checked':''}/> Producto activo (visible en el buscador)</label>
@@ -1048,7 +1013,7 @@ function openProductForm(idx){
         <button class="btn-ghost" onclick="closeModal()">Cancelar</button>
         ${isNew ? '' : `<button class="btn-danger" onclick="deleteProduct(${idx})" style="margin-left:auto;">Eliminar producto</button>`}
       </div>
-      <p class="small" style="margin-top:10px;">Esto solo actualiza la lista en memoria. Tocá "Guardar todos los cambios en GitHub" para publicarlo de verdad.</p>
+      <p class="small" style="margin-top:10px;">Esto solo actualiza la lista en memoria. Tocá "Guardar todos los cambios" para publicarlo de verdad.</p>
     </div>
    </div>`;
   renderProductSubcategoryOptions(p.subcategoria_id || '');
@@ -1119,8 +1084,7 @@ async function saveProductForm(idx){
   const fileInput = document.getElementById('f-foto');
   if(fileInput.files && fileInput.files[0]){
     const file = fileInput.files[0];
-    const base64 = await fileToBase64(file);
-    pendingPhotoUploads[codigo] = base64;
+    pendingPhotoUploads[codigo] = file;
     newProduct.imagenes = [`/fotos/${codigo}.webp`];
   }
 
@@ -1274,16 +1238,7 @@ function applyBulkMove(){
   renderCategoryManager();
   renderSubcategoryManager();
   renderTable();
-  alert(`${selected.length} producto(s) actualizados. No olvides guardar en GitHub.`);
-}
-
-function fileToBase64(file){
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+  alert(`${selected.length} producto(s) actualizados. No olvides guardar los cambios.`);
 }
 
 function deleteProduct(idx){
@@ -1298,12 +1253,8 @@ function deleteProduct(idx){
 async function commitChanges(){
   const statusEl = document.getElementById('commit-status');
   const hasPendingPhotos = Object.keys(pendingPhotoUploads).length > 0;
-  if(hasPendingPhotos && !getToken()){
-    statusEl.innerHTML = '<div class="status err">Hay fotos pendientes y falta el token de GitHub. Pegalo arriba y guardalo (las fotos se siguen subiendo por GitHub).</div>';
-    return;
-  }
   try {
-    // 1. subir fotos pendientes (siguen yendo a GitHub, cambian poco)
+    // 1. subir fotos pendientes a Supabase Storage (instantáneo, sin rebuild)
     if(hasPendingPhotos){
       statusEl.innerHTML = '<div class="status info">Subiendo fotos pendientes...</div>';
       for (const codigo of Object.keys(pendingPhotoUploads)){
@@ -1326,40 +1277,27 @@ async function commitChanges(){
 
     dirty = false;
     updateDirtyIndicator();
-    statusEl.innerHTML = hasPendingPhotos
-      ? '<div class="status ok">Listo. Datos guardados al toque en Supabase; las fotos van a estar disponibles cuando Cloudflare termine de redeployar (1-2 min).</div>'
-      : '<div class="status ok">Listo, guardado al toque. No hace falta esperar ningún rebuild.</div>';
+    statusEl.innerHTML = '<div class="status ok">Listo, guardado al toque en Supabase. No hace falta esperar ningún rebuild.</div>';
   } catch(err){
     statusEl.innerHTML = `<div class="status err">Error al guardar: ${err.message}</div>`;
   }
 }
 
-async function uploadPhoto(codigo, base64){
-  const path = `${FOTOS_PATH}/${codigo}.webp`;
-  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`;
-  // check if file exists to get sha (para poder sobreescribir)
-  let sha;
-  try {
-    const existing = await fetch(url + `?ref=${BRANCH}`, { headers: ghHeaders() });
-    if(existing.ok){
-      const json = await existing.json();
-      sha = json.sha;
-    }
-  } catch(e){ /* no existía, ok */ }
-
-  const res = await fetch(url, {
-    method: 'PUT',
-    headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: `Admin: foto ${codigo}`,
-      content: base64,
-      sha,
-      branch: BRANCH,
-    }),
+async function uploadPhoto(codigo, file){
+  const filename = `${codigo}.webp`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${IMAGES_BUCKET}/${filename}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'apikey': SUPABASE_ANON_KEY,
+      'Content-Type': file.type || 'image/webp',
+      'x-upsert': 'true',
+    },
+    body: file,
   });
   if(!res.ok){
     const errBody = await res.json().catch(()=>({}));
-    throw new Error(`Foto ${codigo}: ` + (errBody.message||('HTTP '+res.status)));
+    throw new Error(`Foto ${codigo}: ` + (errBody.message||errBody.error||('HTTP '+res.status)));
   }
 }
 
