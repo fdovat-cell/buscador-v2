@@ -1051,6 +1051,27 @@ function getCategoryFieldValue(selectId){
 
 function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
 
+function convertToWebp(file, quality){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob((blob) => {
+        URL.revokeObjectURL(objectUrl);
+        if(!blob){ reject(new Error('No se pudo convertir la imagen a webp')); return; }
+        resolve(blob);
+      }, 'image/webp', quality ?? 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('No se pudo leer la imagen')); };
+    img.src = objectUrl;
+  });
+}
+
 async function saveProductForm(idx){
   const codigo = document.getElementById('f-codigo').value.trim();
   if(!codigo){ alert('El código es obligatorio.'); return; }
@@ -1080,11 +1101,12 @@ async function saveProductForm(idx){
     activo: document.getElementById('f-activo').checked,
   };
 
-  // foto nueva pendiente de subir
+  // foto nueva pendiente de subir (se convierte a webp real antes de guardarla)
   const fileInput = document.getElementById('f-foto');
   if(fileInput.files && fileInput.files[0]){
     const file = fileInput.files[0];
-    pendingPhotoUploads[codigo] = file;
+    const yaEsWebp = file.type === 'image/webp';
+    pendingPhotoUploads[codigo] = yaEsWebp ? file : await convertToWebp(file);
     newProduct.imagenes = [`/fotos/${codigo}.webp`];
   }
 
