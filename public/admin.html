@@ -127,7 +127,7 @@
         </div>
 
         <div class="row" style="align-items:center;margin-top:14px;">
-          <div style="flex:1;"><label>Buscar categoría</label><input type="text" id="cat-search" placeholder="Filtrar por nombre..." oninput="renderCategoryManager()" /></div>
+          <div style="flex:1;"><label>Buscar categoría</label><input type="text" id="cat-search" placeholder="Filtrar por nombre..." oninput="scheduleRenderCategoryManager()" /></div>
         </div>
         <div style="overflow:auto;max-height:45vh;margin-top:10px;border:1px solid var(--border);border-radius:8px;">
           <table>
@@ -175,7 +175,7 @@
           <p class="small" style="margin-bottom:0;">Cada subcategoría recibe un identificador permanente. Si luego cambiás el nombre, los productos siguen vinculados.</p>
         </div>
         <div class="toolbar" style="margin-top:14px;">
-          <input type="text" id="subcat-search" placeholder="Buscar subcategoría..." oninput="renderSubcategoryManager()" />
+          <input type="text" id="subcat-search" placeholder="Buscar subcategoría..." oninput="scheduleRenderSubcategoryManager()" />
           <select id="subcat-filter-category" onchange="renderSubcategoryManager()"></select>
           <span class="count-badge" id="subcat-count-badge"></span>
         </div>
@@ -191,7 +191,7 @@
       <div id="tab-proveedores" style="display:none;">
         <p class="small">Tildá una o varias marcas y asignales un número de proveedor a todos sus productos. Sirve para clasificar en bloque; los que queden sin marca elegida se editan después uno por uno desde "Productos".</p>
         <div class="row" style="align-items:center;">
-          <div style="flex:1;"><label>Buscar marca</label><input type="text" id="prov-search" placeholder="Filtrar por nombre..." oninput="renderProveedorManager()" /></div>
+          <div style="flex:1;"><label>Buscar marca</label><input type="text" id="prov-search" placeholder="Filtrar por nombre..." oninput="scheduleRenderProveedorManager()" /></div>
         </div>
         <div style="overflow:auto;max-height:45vh;margin-top:10px;border:1px solid var(--border);border-radius:8px;">
           <table>
@@ -374,6 +374,24 @@ function getSubcategoryName(id){
 let sortedProducts = []; // [{p, idx}] cacheado, ordenado por descripción
 let searchIndex = new Map(); // codigo -> texto normalizado para buscar
 let renderTimer = null;
+let catRenderTimer = null;
+let subcatRenderTimer = null;
+let provRenderTimer = null;
+
+// Espera 150ms sin tipeo antes de recalcular: con miles de productos, recorrer
+// el catálogo completo en cada tecla se sentía trabado.
+function scheduleRenderCategoryManager(){
+  clearTimeout(catRenderTimer);
+  catRenderTimer = setTimeout(renderCategoryManager, 150);
+}
+function scheduleRenderSubcategoryManager(){
+  clearTimeout(subcatRenderTimer);
+  subcatRenderTimer = setTimeout(renderSubcategoryManager, 150);
+}
+function scheduleRenderProveedorManager(){
+  clearTimeout(provRenderTimer);
+  provRenderTimer = setTimeout(renderProveedorManager, 150);
+}
 
 function rebuildIndexes(){
   sortedProducts = products.map((p, idx) => ({ p, idx }));
