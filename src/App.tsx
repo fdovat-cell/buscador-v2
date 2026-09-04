@@ -590,7 +590,12 @@ function Home() {
   })), [categories, products, availableSubcategories]);
   const searchIndex = useMemo(() => products.map((product) => ({
     product,
-    text: normalize([product.codigo, product.descripcion, product.categoria || '', ...(product.marcas || [])].join(' ')),
+    // No se incluye la categoría en el texto de búsqueda: nombres de
+    // categoría como "Cuadernos/Cuadernolas" contienen palabras sueltas
+    // que generaban falsos positivos (ej. buscar "cuadernola" traía
+    // también cuadernos comunes solo por vivir en esa categoría). El
+    // filtro por categoría ya existe aparte con el selector desplegable.
+    text: normalize([product.codigo, product.descripcion, ...(product.marcas || [])].join(' ')),
     codigoNorm: normalize(product.codigo || ''),
     descripcionNorm: normalize(product.descripcion || ''),
     marcasNorm: (product.marcas || []).map((marca) => normalize(marca || '')),
