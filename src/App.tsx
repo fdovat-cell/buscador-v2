@@ -605,29 +605,41 @@ function Home() {
          (categoryFilter === 'all' || product.categoria === categoryFilter) &&
          (subcategoryFilter === 'all' || String(product.subcategoria_id ?? '') === subcategoryFilter);
     });
-    return matching.sort((a, b) => {
+    // Se calcula el valor de orden una sola vez por producto (antes se
+    // recalculaba adentro del comparador del sort, es decir miles de veces
+    // por cada letra tipeada: con ~5000+ productos eso era el cuello de
+    // botella real de la búsqueda lenta).
+    const withSortValue = matching.map((entry) => {
+      let sortValue: number | string;
       if (sortKey === 'relevance') {
         if (!queryJoined) {
-          const comparison = normalize(a.product.descripcion || '').localeCompare(normalize(b.product.descripcion || ''), 'es', { numeric: true });
-          return ascending ? comparison : -comparison;
-        }
-        const score = (entry: typeof a) => {
-          if (entry.codigoNorm === queryJoined) return 1000;
+          sortValue = normalize(entry.product.descripcion || '');
+        } else if (entry.codigoNorm === queryJoined) {
+          sortValue = 1000;
+        } else {
           const fields = [entry.codigoNorm, entry.descripcionNorm, ...entry.marcasNorm];
-          return fields.reduce((sum, field, index) => sum + (field === queryJoined ? 100 - index * 5 : field.startsWith(queryJoined) ? 50 - index * 3 : field.includes(queryJoined) ? 10 - index : 0), 0);
-        };
-        return score(b) - score(a);
+          sortValue = fields.reduce((sum, field, index) => sum + (field === queryJoined ? 100 - index * 5 : field.startsWith(queryJoined) ? 50 - index * 3 : field.includes(queryJoined) ? 10 - index : 0), 0);
+        }
+      } else if (sortKey === 'precio') {
+        sortValue = getPrice(entry.product, overrides);
+      } else if (sortKey === 'marca') {
+        sortValue = normalize([...(entry.product.marcas || [])].sort((x, y) => x.localeCompare(y, 'es'))[0] || '');
+      } else {
+        sortValue = normalize(String(entry.product[sortKey] || ''));
       }
-      const value = (entry: typeof a) => {
-        const product = entry.product;
-        if (sortKey === 'precio') return getPrice(product, overrides);
-        if (sortKey === 'marca') return normalize([...(product.marcas || [])].sort((x, y) => x.localeCompare(y, 'es'))[0] || '');
-        return normalize(String(product[sortKey] || ''));
-      };
-      const left = value(a); const right = value(b);
+      return { entry, sortValue };
+    });
+
+    withSortValue.sort((a, b) => {
+      if (sortKey === 'relevance' && queryJoined) {
+        return (b.sortValue as number) - (a.sortValue as number);
+      }
+      const left = a.sortValue; const right = b.sortValue;
       const comparison = typeof left === 'number' && typeof right === 'number' ? left - right : String(left).localeCompare(String(right), 'es', { numeric: true });
       return ascending ? comparison : -comparison;
-    }).map((entry) => entry.product);
+    });
+
+    return withSortValue.map(({ entry }) => entry.product);
   }, [searchIndex, debouncedSearch, brandFilter, categoryFilter, subcategoryFilter, sortKey, ascending, overrides]);
 
   const visibleProducts = filteredProducts.slice(0, visibleCount);
