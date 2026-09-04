@@ -48,6 +48,13 @@ type SortKey = 'relevance' | 'codigo' | 'descripcion' | 'precio' | 'categoria' |
 type Subcategory = { id: string; label: string; parent: string };
 type CategorySummary = { label: string; count: number; subcategories: Subcategory[] };
 
+// Cuántas tarjetas se montan de una sola vez. Antes eran 48: en cada
+// búsqueda había que crear/pintar 48 tarjetas con foto de golpe, lo que
+// en una tablet Android floja se sentía como que la app se trababa al
+// escribir. Con un lote más chico el trabajo de renderizado por búsqueda
+// baja mucho; "Cargar más" trae el resto sin drama.
+const PAGE_SIZE = 16;
+
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL;
 // Fotos servidas desde Supabase Storage (bucket publico "fotos-productos"),
@@ -465,7 +472,7 @@ function Home() {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('precio');
   const [ascending, setAscending] = useState(true);
-  const [visibleCount, setVisibleCount] = useState(48);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [selected, setSelected] = useState<Product | null>(null);
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [order, setOrder] = useState<Record<string, OrderLine>>({});
@@ -693,7 +700,7 @@ function Home() {
   const updateSearch = (value: string) => {
     startTransition(() => {
       setDebouncedSearch(value);
-      setVisibleCount(48);
+      setVisibleCount(PAGE_SIZE);
       // Si hay un filtro de categoría/subcategoría/marca marcado y el
       // usuario se pone a escribir una búsqueda real, lo limpiamos: antes
       // la búsqueda se combinaba con el filtro previo (con "Y"), así que
@@ -708,7 +715,7 @@ function Home() {
     });
   };
   const resetFilters = () => { updateSearch(''); setBrandFilter('all'); setCategoryFilter('all'); setSubcategoryFilter('all'); setExpandedCategory(null); setSortKey('precio'); setAscending(true); sortTouchedRef.current = false; };
-  const clearCategorySelection = () => { setCategoryFilter('all'); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(48); };
+  const clearCategorySelection = () => { setCategoryFilter('all'); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(PAGE_SIZE); };
   const chooseCategory = (category: CategorySummary) => {
     updateSearch('');
     setBrandFilter('all');
@@ -723,7 +730,7 @@ function Home() {
     setExpandedCategory(category.label);
     setCategoryFilter(category.label);
     setSubcategoryFilter(subcategory.id);
-    setVisibleCount(48);
+    setVisibleCount(PAGE_SIZE);
   };
   const addToOrder = (product: Product) => {
     setOrder((current) => { const existing = current[product.codigo]; return { ...current, [product.codigo]: { product, quantity: (existing?.quantity || 0) + 1 } }; });
@@ -790,8 +797,8 @@ function Home() {
         <section className="toolbar" aria-label="Filtros del catálogo">
           <SearchBox value={debouncedSearch} onSearch={updateSearch} />
           <div className="toolbar-row">
-             <label className="select-wrap"><select value={brandFilter} onChange={(event) => { setBrandFilter(event.target.value); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(48); }} aria-label="Filtrar por marca" data-testid="select-filter-brand"><option value="all">Todas las marcas</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
-             <label className="select-wrap"><select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(48); }} aria-label="Filtrar por categoría" data-testid="select-filter-category"><option value="all">Todas las categorías</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
+             <label className="select-wrap"><select value={brandFilter} onChange={(event) => { setBrandFilter(event.target.value); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(PAGE_SIZE); }} aria-label="Filtrar por marca" data-testid="select-filter-brand"><option value="all">Todas las marcas</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
+             <label className="select-wrap"><select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(PAGE_SIZE); }} aria-label="Filtrar por categoría" data-testid="select-filter-category"><option value="all">Todas las categorías</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
             <div className="sort-control" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 800, color: 'hsl(213 11% 46%)', whiteSpace: 'nowrap' }}>Ordenar por:</span>
               <label className="select-wrap" style={{ minWidth: 190 }}>
@@ -802,7 +809,7 @@ function Home() {
                     const [key, direction] = event.target.value.split('-') as [SortKey, 'asc' | 'desc'];
                     setSortKey(key);
                     setAscending(direction === 'asc');
-                    setVisibleCount(48);
+                    setVisibleCount(PAGE_SIZE);
                   }}
                   aria-label="Ordenar catálogo"
                   data-testid="select-sort-products"
@@ -831,7 +838,7 @@ function Home() {
                  <button onClick={clearCategorySelection} aria-label="Cerrar esta búsqueda" data-testid="button-clear-category"><X size={13} /></button>
                </div>
              )}
-             {loading ? <SkeletonGrid /> : loadError ? <div className="state-card" data-testid="error-products"><div className="error-mark"><AlertCircle size={22} /></div><h2>No pudimos cargar el catálogo</h2><p>{loadError} Revisá que los datos estén disponibles e intentá nuevamente.</p><button className="secondary-button" onClick={() => void loadCatalog()} data-testid="button-retry-products"><RefreshCw size={14} /> Reintentar</button></div> : (!hasActiveQuery || browsingSubcategories) ? <CategoryBrowser categories={categorySummaries} expandedCategory={expandedCategory} subcategoriesLoading={subcategoriesLoading} onCategory={chooseCategory} onSubcategory={chooseSubcategory} onBack={() => setExpandedCategory(null)} /> : filteredProducts.length === 0 ? <div className="state-card" data-testid="empty-products"><div className="error-mark"><PackageOpen size={22} /></div><h2>No encontramos artículos</h2><p>Probá con otro código, marca o descripción. También podés quitar los filtros.</p><button className="secondary-button" onClick={resetFilters} data-testid="button-reset-empty"><RefreshCw size={14} /> Restablecer filtros</button></div> : <><div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }} key={product.codigo} data-testid={`card-product-${product.codigo}`}><div className="product-image"><ProductImage product={product} /><span className="product-code">{product.codigo}</span></div><div className="card-body"><div className="product-type">{product.categoria || 'Sin categoría'}</div><div className="product-name">{product.descripcion}</div><div className="card-footer"><div className="product-price">{compactPrice(getPrice(product, overrides), getCurrency(product))}<span className="currency">{currencyLabel(getCurrency(product))}</span></div><button className={`add-button ${order[product.codigo] ? 'added' : ''}`} onClick={() => addToOrder(product)} aria-label={`Agregar ${product.codigo} a la nota`} data-testid={`button-add-${product.codigo}`}>{order[product.codigo] ? <Check size={14} /> : <Plus size={14} />}<span>{order[product.codigo] ? 'Agregado' : 'Agregar'}</span></button></div><button className="details-button" onClick={() => openSelected(product)} data-testid={`button-detail-${product.codigo}`}>Ver ficha completa</button></div></article>)}</div>{visibleCount < filteredProducts.length && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}><button className="secondary-button" onClick={() => setVisibleCount((count) => count + 48)} data-testid="button-load-more">Cargar 48 más</button></div>}</>}
+             {loading ? <SkeletonGrid /> : loadError ? <div className="state-card" data-testid="error-products"><div className="error-mark"><AlertCircle size={22} /></div><h2>No pudimos cargar el catálogo</h2><p>{loadError} Revisá que los datos estén disponibles e intentá nuevamente.</p><button className="secondary-button" onClick={() => void loadCatalog()} data-testid="button-retry-products"><RefreshCw size={14} /> Reintentar</button></div> : (!hasActiveQuery || browsingSubcategories) ? <CategoryBrowser categories={categorySummaries} expandedCategory={expandedCategory} subcategoriesLoading={subcategoriesLoading} onCategory={chooseCategory} onSubcategory={chooseSubcategory} onBack={() => setExpandedCategory(null)} /> : filteredProducts.length === 0 ? <div className="state-card" data-testid="empty-products"><div className="error-mark"><PackageOpen size={22} /></div><h2>No encontramos artículos</h2><p>Probá con otro código, marca o descripción. También podés quitar los filtros.</p><button className="secondary-button" onClick={resetFilters} data-testid="button-reset-empty"><RefreshCw size={14} /> Restablecer filtros</button></div> : <><div className="product-grid product-grid-in">{visibleProducts.map((product) => <article className="product-card" key={product.codigo} data-testid={`card-product-${product.codigo}`}><div className="product-image"><ProductImage product={product} /><span className="product-code">{product.codigo}</span></div><div className="card-body"><div className="product-type">{product.categoria || 'Sin categoría'}</div><div className="product-name">{product.descripcion}</div><div className="card-footer"><div className="product-price">{compactPrice(getPrice(product, overrides), getCurrency(product))}<span className="currency">{currencyLabel(getCurrency(product))}</span></div><button className={`add-button ${order[product.codigo] ? 'added' : ''}`} onClick={() => addToOrder(product)} aria-label={`Agregar ${product.codigo} a la nota`} data-testid={`button-add-${product.codigo}`}>{order[product.codigo] ? <Check size={14} /> : <Plus size={14} />}<span>{order[product.codigo] ? 'Agregado' : 'Agregar'}</span></button></div><button className="details-button" onClick={() => openSelected(product)} data-testid={`button-detail-${product.codigo}`}>Ver ficha completa</button></div></article>)}</div>{visibleCount < filteredProducts.length && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 22 }}><button className="secondary-button" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)} data-testid="button-load-more">Cargar {PAGE_SIZE} más</button></div>}</>}
           </section>
           <OrderPanel lines={lines} note={note} overrides={overrides} onNoteChange={setNote} onQuantity={changeQuantity} onRemove={removeFromOrder} onClear={clearOrder} onDownload={downloadOrder} onCopy={copyOrder} onWhatsApp={sendWhatsApp} />
         </div>
