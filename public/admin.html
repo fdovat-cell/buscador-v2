@@ -398,7 +398,12 @@ function rebuildIndexes(){
   sortedProducts.sort((a, b) => normalize(a.p.descripcion).localeCompare(normalize(b.p.descripcion), 'es', { numeric: true }));
   searchIndex = new Map();
   products.forEach((p) => {
-    searchIndex.set(p.codigo, normalize(p.codigo + ' ' + p.descripcion + ' ' + (p.marcas||[]).join(' ') + ' ' + (p.categoria||'')));
+    // No se incluye la categoría en el texto de búsqueda: nombres de
+    // categoría como "Cuadernos/Cuadernolas" contienen palabras sueltas
+    // que generaban falsos positivos (ej. buscar "cuadernola" traía
+    // también cuadernos comunes solo por vivir en esa categoría). El
+    // filtro por categoría ya existe aparte con el selector desplegable.
+    searchIndex.set(p.codigo, normalize(p.codigo + ' ' + p.descripcion + ' ' + (p.marcas||[]).join(' ')));
   });
 }
 
