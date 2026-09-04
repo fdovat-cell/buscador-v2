@@ -410,6 +410,47 @@ function OrderPanel({
   );
 }
 
+// El input de búsqueda vive aislado en su propio componente con estado
+// local: así cada letra tipeada solo re-renderiza este input (y el botón
+// de limpiar), no el resto de Home (grilla de productos, filtros, panel
+// de pedido, etc.). Antes 'search' vivía en Home, así que cada tecla
+// re-renderizaba TODO ese árbol -aunque los resultados mostrados no
+// cambiaran hasta que pasaban los 150ms de debounce- y eso era lo que
+// se sentía trabado, sobre todo en tablets Android. El debounce ahora
+// vive acá adentro; el padre solo se entera del valor ya asentado.
+function SearchBox({ value, onSearch }: { value: string; onSearch: (value: string) => void }) {
+  const [text, setText] = useState(value);
+  const timerRef = useRef<number>();
+
+  // Si el valor cambia desde afuera (limpiar filtros, elegir categoría,
+  // restablecer), sincronizamos el input.
+  useEffect(() => {
+    setText(value);
+  }, [value]);
+
+  const handleChange = (next: string) => {
+    setText(next);
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => onSearch(next), 150);
+  };
+
+  const handleClear = () => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    setText('');
+    onSearch('');
+  };
+
+  useEffect(() => () => { if (timerRef.current) window.clearTimeout(timerRef.current); }, []);
+
+  return (
+    <div className="search-wrap">
+      <Search className="search-icon" size={19} />
+      <input autoFocus className="search-input" type="search" value={text} onChange={(event) => handleChange(event.target.value)} placeholder="Buscar por código, descripción, marca o categoría..." aria-label="Buscar productos" data-testid="input-search-products" />
+      {text && <button className="clear-search" onClick={handleClear} aria-label="Limpiar búsqueda" data-testid="button-clear-search"><X size={16} /></button>}
+    </div>
+  );
+}
+
 function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
@@ -417,7 +458,6 @@ function Home() {
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [brandFilter, setBrandFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -547,11 +587,6 @@ function Home() {
   useEffect(() => { writeStorage('pelpap-v2-order', JSON.stringify(order)); }, [order]);
   useEffect(() => { writeStorage('pelpap-v2-order-note', note); }, [note]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(search), 150);
-    return () => window.clearTimeout(timer);
-  }, [search]);
-
   const sortTouchedRef = useRef(false);
   useEffect(() => {
     if (sortTouchedRef.current) return;
@@ -655,7 +690,7 @@ function Home() {
   const orderCount = lines.reduce((sum, line) => sum + line.quantity, 0);
   const imageCount = useMemo(() => products.filter((product) => product.imagenes?.length).length, [products]);
 
-  const updateSearch = (value: string) => { setSearch(value); setVisibleCount(48); };
+  const updateSearch = (value: string) => { setDebouncedSearch(value); setVisibleCount(48); };
   const resetFilters = () => { updateSearch(''); setBrandFilter('all'); setCategoryFilter('all'); setSubcategoryFilter('all'); setExpandedCategory(null); setSortKey('precio'); setAscending(true); sortTouchedRef.current = false; };
   const clearCategorySelection = () => { setCategoryFilter('all'); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(48); };
   const chooseCategory = (category: CategorySummary) => {
@@ -737,7 +772,7 @@ function Home() {
           <div className="catalog-stats"><div className="stat"><span className="stat-value" data-testid="text-product-count">{products.length ? products.length.toLocaleString('es-AR') : '—'}</span><span className="stat-label">artículos</span></div><div className="stat"><span className="stat-value">{imageCount ? imageCount.toLocaleString('es-AR') : '—'}</span><span className="stat-label">con foto</span></div></div>
         </div>
         <section className="toolbar" aria-label="Filtros del catálogo">
-          <div className="search-wrap"><Search className="search-icon" size={19} /><input autoFocus className="search-input" type="search" value={search} onChange={(event) => updateSearch(event.target.value)} placeholder="Buscar por código, descripción, marca o categoría..." aria-label="Buscar productos" data-testid="input-search-products" />{search && <button className="clear-search" onClick={() => updateSearch('')} aria-label="Limpiar búsqueda" data-testid="button-clear-search"><X size={16} /></button>}</div>
+          <SearchBox value={debouncedSearch} onSearch={updateSearch} />
           <div className="toolbar-row">
              <label className="select-wrap"><select value={brandFilter} onChange={(event) => { setBrandFilter(event.target.value); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(48); }} aria-label="Filtrar por marca" data-testid="select-filter-brand"><option value="all">Todas las marcas</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
              <label className="select-wrap"><select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(48); }} aria-label="Filtrar por categoría" data-testid="select-filter-category"><option value="all">Todas las categorías</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select><ChevronDown className="select-chevron" size={15} /></label>
