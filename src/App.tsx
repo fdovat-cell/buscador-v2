@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Check,
@@ -257,7 +257,7 @@ function ProductImage({ product, detail = false, imageIndex = 0 }: { product: Pr
       </div>
     );
   }
-  return <img src={assetUrl(source)} alt={product.descripcion} data-testid={`img-product-${product.codigo}`} onError={() => setFailed(true)} />;
+  return <img src={assetUrl(source)} alt={product.descripcion} data-testid={`img-product-${product.codigo}`} onError={() => setFailed(true)} loading="lazy" decoding="async" />;
 }
 
 function SkeletonGrid() {
@@ -307,7 +307,7 @@ function ProductDetail({
           <div className="detail-visual">
             <ProductImage product={product} detail imageIndex={imageIndex} />
             <span className="product-code">{product.codigo}</span>
-            {images.length > 1 && <div className="detail-thumbs" aria-label="Más fotos del artículo">{images.map((image, index) => <button className={`detail-thumb ${index === imageIndex ? 'active' : ''}`} key={image} onClick={() => setImageIndex(index)} aria-label={`Ver foto ${index + 1}`} data-testid={`button-detail-image-${index}`}><img src={assetUrl(image)} alt="" /></button>)}</div>}
+            {images.length > 1 && <div className="detail-thumbs" aria-label="Más fotos del artículo">{images.map((image, index) => <button className={`detail-thumb ${index === imageIndex ? 'active' : ''}`} key={image} onClick={() => setImageIndex(index)} aria-label={`Ver foto ${index + 1}`} data-testid={`button-detail-image-${index}`}><img src={assetUrl(image)} alt="" loading="lazy" decoding="async" /></button>)}</div>}
           </div>
           <div className="detail-copy">
             <div className="eyebrow">Ficha de artículo</div>
@@ -690,7 +690,23 @@ function Home() {
   const orderCount = lines.reduce((sum, line) => sum + line.quantity, 0);
   const imageCount = useMemo(() => products.filter((product) => product.imagenes?.length).length, [products]);
 
-  const updateSearch = (value: string) => { setDebouncedSearch(value); setVisibleCount(48); };
+  const updateSearch = (value: string) => {
+    startTransition(() => {
+      setDebouncedSearch(value);
+      setVisibleCount(48);
+      // Si hay un filtro de categoría/subcategoría/marca marcado y el
+      // usuario se pone a escribir una búsqueda real, lo limpiamos: antes
+      // la búsqueda se combinaba con el filtro previo (con "Y"), así que
+      // si el término no pertenecía a esa categoría/marca daba "no hay
+      // ninguna" aunque el producto existiera en otro lado del catálogo.
+      if (value.trim()) {
+        setBrandFilter('all');
+        setCategoryFilter('all');
+        setSubcategoryFilter('all');
+        setExpandedCategory(null);
+      }
+    });
+  };
   const resetFilters = () => { updateSearch(''); setBrandFilter('all'); setCategoryFilter('all'); setSubcategoryFilter('all'); setExpandedCategory(null); setSortKey('precio'); setAscending(true); sortTouchedRef.current = false; };
   const clearCategorySelection = () => { setCategoryFilter('all'); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(48); };
   const chooseCategory = (category: CategorySummary) => {
