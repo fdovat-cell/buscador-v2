@@ -61,7 +61,12 @@ const basePath = import.meta.env.BASE_URL;
 // ya no desde el build de Cloudflare Pages: asi se pueden agregar/actualizar
 // fotos sin disparar un rebuild del sitio.
 const IMAGES_BASE_URL = 'https://xxlgsipmocwizhafinwr.supabase.co/storage/v1/object/public/fotos-productos';
-const assetUrl = (path: string) => `${IMAGES_BASE_URL}/${path.replace(/^\/+/, '').split('/').pop()}`;
+// Parametro que cambia cada 5 minutos para evitar que un navegador se
+// quede mostrando una foto vieja despues de que se reemplaza el archivo en
+// Supabase (mismo nombre de archivo, mismo codigo de articulo: no se toca
+// nada de eso, solo se fuerza a revisar si hay version nueva cada rato).
+const CACHE_BUST_BUCKET = Math.floor(Date.now() / (5 * 60000));
+const assetUrl = (path: string) => `${IMAGES_BASE_URL}/${path.replace(/^\/+/, '').split('/').pop()}?v=${CACHE_BUST_BUCKET}`;
 
 // Datos de catálogo (productos, subcategorías, orden de categorías) se sirven
 // desde Supabase Storage, no desde el bundle de Cloudflare Pages: así el admin
