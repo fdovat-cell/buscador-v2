@@ -595,10 +595,12 @@ function Home() {
   useEffect(() => { writeStorage('pelpap-v2-order-note', note); }, [note]);
 
   const sortTouchedRef = useRef(false);
-  useEffect(() => {
-    if (sortTouchedRef.current) return;
-    setSortKey(debouncedSearch.trim() ? 'relevance' : 'precio');
-  }, [debouncedSearch]);
+  // Antes esto era un useEffect que llamaba setSortKey, lo que generaba
+  // una segunda pasada completa de filtrado/orden en cada búsqueda (primero
+  // se recalculaba filteredProducts con el sortKey viejo, después el efecto
+  // cambiaba sortKey y se recalculaba todo de nuevo). Ahora se deriva en el
+  // mismo render, sin estado ni efecto extra.
+  const effectiveSortKey: SortKey = sortTouchedRef.current ? sortKey : (debouncedSearch.trim() ? 'relevance' : 'precio');
 
   const brands = useMemo(() => [...new Set(products.flatMap((item) => item.marcas || []).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
   const categories = useMemo(() => {
@@ -658,7 +660,7 @@ function Home() {
     // botella real de la búsqueda lenta).
     const withSortValue = matching.map((entry) => {
       let sortValue: number | string;
-      if (sortKey === 'relevance') {
+      if (effectiveSortKey === 'relevance') {
         if (!queryJoined) {
           sortValue = normalize(entry.product.descripcion || '');
         } else if (entry.codigoNorm === queryJoined) {
@@ -667,18 +669,18 @@ function Home() {
           const fields = [entry.codigoNorm, entry.descripcionNorm, ...entry.marcasNorm];
           sortValue = fields.reduce((sum, field, index) => sum + (field === queryJoined ? 100 - index * 5 : field.startsWith(queryJoined) ? 50 - index * 3 : field.includes(queryJoined) ? 10 - index : 0), 0);
         }
-      } else if (sortKey === 'precio') {
+      } else if (effectiveSortKey === 'precio') {
         sortValue = getPrice(entry.product, overrides);
-      } else if (sortKey === 'marca') {
+      } else if (effectiveSortKey === 'marca') {
         sortValue = normalize([...(entry.product.marcas || [])].sort((x, y) => x.localeCompare(y, 'es'))[0] || '');
       } else {
-        sortValue = normalize(String(entry.product[sortKey] || ''));
+        sortValue = normalize(String(entry.product[effectiveSortKey] || ''));
       }
       return { entry, sortValue };
     });
 
     withSortValue.sort((a, b) => {
-      if (sortKey === 'relevance' && queryJoined) {
+      if (effectiveSortKey === 'relevance' && queryJoined) {
         return (b.sortValue as number) - (a.sortValue as number);
       }
       const left = a.sortValue; const right = b.sortValue;
@@ -687,7 +689,7 @@ function Home() {
     });
 
     return withSortValue.map(({ entry }) => entry.product);
-  }, [searchIndex, debouncedSearch, brandFilter, categoryFilter, subcategoryFilter, sortKey, ascending, overrides]);
+  }, [searchIndex, debouncedSearch, brandFilter, categoryFilter, subcategoryFilter, effectiveSortKey, ascending, overrides]);
 
   const visibleProducts = filteredProducts.slice(0, visibleCount);
   const hasActiveQuery = debouncedSearch.trim() !== '' || brandFilter !== 'all' || categoryFilter !== 'all' || subcategoryFilter !== 'all';
@@ -803,7 +805,7 @@ function Home() {
               <span style={{ fontSize: 11, fontWeight: 800, color: 'hsl(213 11% 46%)', whiteSpace: 'nowrap' }}>Ordenar por:</span>
               <label className="select-wrap" style={{ minWidth: 190 }}>
                 <select
-                  value={`${sortKey}-${ascending ? 'asc' : 'desc'}`}
+                  value={`${effectiveSortKey}-${ascending ? 'asc' : 'desc'}`}
                   onChange={(event) => {
                     sortTouchedRef.current = true;
                     const [key, direction] = event.target.value.split('-') as [SortKey, 'asc' | 'desc'];
