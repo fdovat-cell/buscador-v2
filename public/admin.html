@@ -104,6 +104,7 @@
           <button class="btn-stamp" onclick="openNewProduct()">+ Nuevo producto</button>
           <button class="btn-ghost" onclick="openBulkMoveModal()">Mover / recategorizar seleccionados</button>
           <button class="btn-ghost" onclick="clearProductSelection()">Limpiar selección</button>
+          <button class="btn-ghost" onclick="openPriceImportModal()">Actualizar precios (CSV)</button>
           <button class="btn-primary" onclick="loadCatalog(true)">Recargar catálogo</button>
         </div>
         <div id="load-status" class="status info">Cargando catálogo...</div>
@@ -1002,7 +1003,7 @@ function openProductForm(idx){
       <div class="row">
         <div><label>Precio</label><input id="f-precio" type="number" step="0.01" value="${p.precio ?? ''}" /></div>
         <div><label>Precio unitario</label><input id="f-precio-unitario" type="number" step="0.01" value="${p.precio_unitario ?? ''}" /></div>
-        <div><label>Moneda</label><select id="f-moneda"><option value="ARS" ${p.moneda!=='USD'?'selected':''}>ARS ($)</option><option value="USD" ${p.moneda==='USD'?'selected':''}>USD</option></select></div>
+        <div><label>Moneda</label><select id="f-moneda"><option value="ARS" ${p.moneda!=='USD' && p.moneda!=='UYU'?'selected':''}>ARS ($)</option><option value="UYU" ${p.moneda==='UYU'?'selected':''}>UYU ($ uruguayo)</option><option value="USD" ${p.moneda==='USD'?'selected':''}>USD</option></select></div>
       </div>
       <div class="row">
         <div>
@@ -1284,6 +1285,66 @@ function applyBulkMove(){
   renderSubcategoryManager();
   renderTable();
   alert(`${selected.length} producto(s) actualizados. No olvides guardar los cambios.`);
+}
+
+function openPriceImportModal(){
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+  <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <h2>Actualizar precios desde CSV</h2>
+      <p class="small">El archivo debe tener columnas <b>Codigo,Precio,Moneda</b> (Moneda: UYU o USD). Solo se actualiza el precio de los códigos que YA existen en esta lista — no se agrega ningún producto nuevo.</p>
+      <input type="file" id="price-import-file" accept=".csv" />
+      <div id="price-import-result" style="margin-top:14px;"></div>
+      <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-primary" onclick="processPriceImport()">Procesar archivo</button>
+        <button class="btn-ghost" onclick="closeModal()">Cerrar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function processPriceImport(){
+  const input = document.getElementById('price-import-file');
+  const resultEl = document.getElementById('price-import-result');
+  if(!input.files || !input.files[0]){ alert('Elegí un archivo CSV primero.'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const lines = String(reader.result).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if(!lines.length){ resultEl.innerHTML = '<p class="small" style="color:#b23b2e;">El archivo está vacío.</p>'; return; }
+    const header = lines[0].toLowerCase();
+    const dataLines = header.startsWith('codigo') ? lines.slice(1) : lines;
+
+    let actualizados = 0;
+    const noEncontrados = [];
+    const errores = [];
+    dataLines.forEach(line => {
+      const parts = line.split(',');
+      if(parts.length < 3){ errores.push(line); return; }
+      const [codigo, precioStr, monedaRaw] = parts;
+      const precio = Number(precioStr);
+      const moneda = (monedaRaw || '').trim().toUpperCase();
+      if(!codigo || Number.isNaN(precio)){ errores.push(line); return; }
+      const producto = products.find(p => p.codigo === codigo.trim());
+      if(!producto){ noEncontrados.push(codigo.trim()); return; }
+      producto.precio = precio;
+      producto.moneda = moneda === 'USD' ? 'USD' : (moneda === 'UYU' ? 'UYU' : producto.moneda);
+      actualizados++;
+    });
+
+    if(actualizados > 0){
+      markDirty();
+      rebuildIndexes();
+      renderTable();
+    }
+
+    resultEl.innerHTML = `
+      <p><b>${actualizados}</b> producto(s) actualizados en la lista (todavía no publicado — falta "Guardar todos los cambios").</p>
+      ${noEncontrados.length ? `<p style="color:#b23b2e;"><b>${noEncontrados.length}</b> código(s) del CSV no existen en la app, no se tocaron:</p><textarea readonly style="width:100%;height:90px;">${noEncontrados.join(', ')}</textarea>` : ''}
+      ${errores.length ? `<p style="color:#b23b2e;"><b>${errores.length}</b> línea(s) del CSV no se pudieron leer.</p>` : ''}
+    `;
+  };
+  reader.readAsText(input.files[0], 'utf-8');
 }
 
 function deleteProduct(idx){
