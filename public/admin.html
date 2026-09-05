@@ -1324,23 +1324,27 @@ function processPriceImport(){
     const errores = [];
     const porCodigo = new Map(products.map(p => [p.codigo, p]));
 
-    const CHUNK = 200;
+    const CHUNK = 100;
     let i = 0;
     function procesarTanda(){
       const fin = Math.min(i + CHUNK, dataLines.length);
       for(; i < fin; i++){
-        const line = dataLines[i];
-        const parts = line.split(',');
-        if(parts.length < 3){ errores.push(line); continue; }
-        const [codigo, precioStr, monedaRaw] = parts;
-        const precio = Number(precioStr);
-        const moneda = (monedaRaw || '').trim().toUpperCase();
-        if(!codigo || Number.isNaN(precio)){ errores.push(line); continue; }
-        const producto = porCodigo.get(codigo.trim());
-        if(!producto){ noEncontrados.push(codigo.trim()); continue; }
-        producto.precio = precio;
-        producto.moneda = moneda === 'USD' ? 'USD' : (moneda === 'UYU' ? 'UYU' : producto.moneda);
-        actualizados++;
+        try {
+          const line = dataLines[i];
+          const parts = line.split(',');
+          if(parts.length < 3){ errores.push(line); continue; }
+          const [codigo, precioStr, monedaRaw] = parts;
+          const precio = Number(precioStr);
+          const moneda = (monedaRaw || '').trim().toUpperCase();
+          if(!codigo || Number.isNaN(precio)){ errores.push(line); continue; }
+          const producto = porCodigo.get(codigo.trim());
+          if(!producto){ noEncontrados.push(codigo.trim()); continue; }
+          producto.precio = precio;
+          producto.moneda = moneda === 'USD' ? 'USD' : (moneda === 'UYU' ? 'UYU' : producto.moneda);
+          actualizados++;
+        } catch(err) {
+          errores.push(`${dataLines[i]} (error: ${String(err && err.message || err)})`);
+        }
       }
       resultEl.innerHTML = `<p class="small">Procesando... ${i} de ${dataLines.length}</p>`;
       if(i < dataLines.length){
@@ -1348,15 +1352,21 @@ function processPriceImport(){
         return;
       }
 
-      if(actualizados > 0){
-        markDirty();
-        renderTable();
+      let errorFinal = '';
+      try {
+        if(actualizados > 0){
+          markDirty();
+          renderTable();
+        }
+      } catch(err) {
+        errorFinal = `<p style="color:#b23b2e;"><b>Se actualizaron los precios en memoria pero falló al refrescar la tabla:</b> ${String(err && err.message || err).replace(/</g,'&lt;').replace(/>/g,'&gt;')}. Los precios igual quedaron aplicados — probá cerrar esta ventana y mirar la tabla.</p>`;
       }
       if(btn){ btn.disabled = false; btn.textContent = 'Procesar archivo'; }
       resultEl.innerHTML = `
         <p><b>${actualizados}</b> producto(s) actualizados en la lista (todavía no publicado — falta "Guardar todos los cambios").</p>
         ${noEncontrados.length ? `<p style="color:#b23b2e;"><b>${noEncontrados.length}</b> código(s) del CSV no existen en la app, no se tocaron:</p><textarea readonly style="width:100%;height:90px;">${noEncontrados.join(', ')}</textarea>` : ''}
         ${errores.length ? `<p style="color:#b23b2e;"><b>${errores.length}</b> línea(s) del CSV no se pudieron leer.</p>` : ''}
+        ${errorFinal}
       `;
     }
     setTimeout(procesarTanda, 0);
