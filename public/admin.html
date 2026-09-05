@@ -1318,6 +1318,7 @@ function processPriceImport(){
     let actualizados = 0;
     const noEncontrados = [];
     const errores = [];
+    const porCodigo = new Map(products.map(p => [p.codigo, p]));
     dataLines.forEach(line => {
       const parts = line.split(',');
       if(parts.length < 3){ errores.push(line); return; }
@@ -1325,7 +1326,7 @@ function processPriceImport(){
       const precio = Number(precioStr);
       const moneda = (monedaRaw || '').trim().toUpperCase();
       if(!codigo || Number.isNaN(precio)){ errores.push(line); return; }
-      const producto = products.find(p => p.codigo === codigo.trim());
+      const producto = porCodigo.get(codigo.trim());
       if(!producto){ noEncontrados.push(codigo.trim()); return; }
       producto.precio = precio;
       producto.moneda = moneda === 'USD' ? 'USD' : (moneda === 'UYU' ? 'UYU' : producto.moneda);
