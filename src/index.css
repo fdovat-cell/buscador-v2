@@ -294,6 +294,17 @@ h1 { font: 700 clamp(30px, 4vw, 50px)/.98 var(--font-display); letter-spacing: -
   .modal { max-height: calc(100dvh - 16px); }
   .modal-close { top: 10px; right: 10px; width: 28px; height: 28px; }
 }
+@media (pointer: coarse) {
+  /* En pantallas táctiles (tablets, celulares) se saca el ruido de fondo
+     con feTurbulence, el mix-blend-mode y las animaciones de entrada.
+     Son puramente decorativos y en dispositivos con GPU floja obligan a
+     recalcular/componer toda la pantalla en cada re-render, lo que
+     contribuye al freeze al escribir o borrar en la búsqueda. */
+  body::before { display: none; }
+  .product-image img, .detail-visual > img, .detail-thumb img { mix-blend-mode: normal; }
+  .product-grid-in, .category-tile { animation: none; }
+  .category-tile { box-shadow: none; transition: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 }
