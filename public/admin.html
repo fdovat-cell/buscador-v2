@@ -108,6 +108,7 @@
           <button class="btn-ghost" onclick="openCatDescImportModal()">Actualizar categoría/descripción (CSV)</button>
           <button class="btn-primary" onclick="loadCatalog(true)">Recargar catálogo</button>
         </div>
+        <div id="category-view-banner" style="display:none;margin-bottom:10px;"></div>
         <div id="load-status" class="status info">Cargando catálogo...</div>
         <div style="overflow:auto;max-height:65vh;">
           <table>
@@ -414,6 +415,21 @@ function scheduleRenderTable(){
   renderTimer = setTimeout(renderTable, 150);
 }
 
+let categoryViewFilter = null;
+
+function setCategoryViewFilter(name){
+  categoryViewFilter = name;
+  const banner = document.getElementById('category-view-banner');
+  if(name === null){
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+  } else {
+    const etiqueta = name === '' ? '(sin categoría)' : name;
+    banner.style.display = 'block';
+    banner.innerHTML = `<span class="small">Mostrando solo la categoría <b>${escapeAttr(etiqueta)}</b>. <button class="btn-ghost" onclick="setCategoryViewFilter(null); renderTable();">Quitar filtro</button></span>`;
+  }
+}
+
 function renderTable(){
   const q = normalize(document.getElementById('search-box').value);
   const filterActivo = document.getElementById('filter-activo').value;
@@ -424,6 +440,7 @@ function renderTable(){
     const isActive = p.activo !== false;
     if(filterActivo === 'active' && !isActive) continue;
     if(filterActivo === 'inactive' && isActive) continue;
+    if(categoryViewFilter !== null && (p.categoria || '').toString().trim() !== categoryViewFilter) continue;
     const haystack = searchIndex.get(p.codigo) || '';
     if(q && !haystack.includes(q)) continue;
     shown++;
@@ -617,7 +634,8 @@ function toggleAllCategories(checked){
 
 function viewProductsOfCategory(name){
   switchTab('productos');
-  document.getElementById('search-box').value = name === '(sin categoría)' ? '' : name;
+  document.getElementById('search-box').value = '';
+  setCategoryViewFilter(name === '(sin categoría)' ? '' : name);
   renderTable();
 }
 
