@@ -70,7 +70,7 @@ const assetUrl = (path: string) => `${IMAGES_BASE_URL}/${path.replace(/^\/+/, ''
 // Completar con la URL del proyecto de Supabase, ej:
 // 'https://xxxxxxxxxxxx.supabase.co/storage/v1/object/public/catalogo-data'
 const DATA_BASE_URL = 'https://xxlgsipmocwizhafinwr.supabase.co/storage/v1/object/public/catalogo-data';
-const dataUrl = (file: string) => `${DATA_BASE_URL}/${file}`;
+const dataUrl = (file: string) => `${DATA_BASE_URL}/${file}?v=${Date.now()}`;
 
 function getSafeStorage(): Storage | null {
   try {
