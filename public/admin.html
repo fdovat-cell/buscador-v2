@@ -105,6 +105,7 @@
           <button class="btn-ghost" onclick="openBulkMoveModal()">Mover / recategorizar seleccionados</button>
           <button class="btn-ghost" onclick="clearProductSelection()">Limpiar selección</button>
           <button class="btn-ghost" onclick="openPriceImportModal()">Actualizar precios (CSV)</button>
+          <button class="btn-ghost" onclick="openCatDescImportModal()">Actualizar categoría/descripción (CSV)</button>
           <button class="btn-primary" onclick="loadCatalog(true)">Recargar catálogo</button>
         </div>
         <div id="load-status" class="status info">Cargando catálogo...</div>
@@ -1285,6 +1286,118 @@ function applyBulkMove(){
   renderSubcategoryManager();
   renderTable();
   alert(`${selected.length} producto(s) actualizados. No olvides guardar los cambios.`);
+}
+
+// Parser de una línea CSV que respeta comillas (soporta comas dentro de
+// un campo, como en las descripciones). No usa librerías externas.
+function parseCsvLine(line){
+  const out = [];
+  let cur = '';
+  let inQuotes = false;
+  for(let i = 0; i < line.length; i++){
+    const ch = line[i];
+    if(inQuotes){
+      if(ch === '"'){
+        if(line[i+1] === '"'){ cur += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        cur += ch;
+      }
+    } else {
+      if(ch === '"'){ inQuotes = true; }
+      else if(ch === ','){ out.push(cur); cur = ''; }
+      else { cur += ch; }
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+function openCatDescImportModal(){
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+  <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <h2>Actualizar categoría/descripción desde CSV</h2>
+      <p class="small">El archivo debe tener columnas <b>Codigo,Categoria,Descripcion</b>. Solo se actualiza la categoría y descripción de los códigos que YA existen en esta lista — no se agrega ningún producto nuevo.</p>
+      <input type="file" id="catdesc-import-file" accept=".csv" />
+      <div id="catdesc-import-result" style="margin-top:14px;"></div>
+      <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-primary" id="catdesc-import-btn" onclick="processCatDescImport()">Procesar archivo</button>
+        <button class="btn-ghost" onclick="closeModal()">Cerrar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function processCatDescImport(){
+  const input = document.getElementById('catdesc-import-file');
+  const resultEl = document.getElementById('catdesc-import-result');
+  const btn = document.getElementById('catdesc-import-btn');
+  if(!input.files || !input.files[0]){ alert('Elegí un archivo CSV primero.'); return; }
+  if(btn){ btn.disabled = true; btn.textContent = 'Procesando...'; }
+  resultEl.innerHTML = '<p class="small">Procesando, no cierres esta ventana...</p>';
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const lines = String(reader.result).split(/\r?\n/).filter(l => l.trim());
+    if(!lines.length){ resultEl.innerHTML = '<p class="small" style="color:#b23b2e;">El archivo está vacío.</p>'; if(btn){ btn.disabled=false; btn.textContent='Procesar archivo'; } return; }
+    const header = lines[0].toLowerCase();
+    const dataLines = header.startsWith('codigo') ? lines.slice(1) : lines;
+
+    let actualizados = 0;
+    const noEncontrados = [];
+    const errores = [];
+    const porCodigo = new Map(products.map(p => [p.codigo, p]));
+
+    const CHUNK = 100;
+    let i = 0;
+    function procesarTanda(){
+      const fin = Math.min(i + CHUNK, dataLines.length);
+      for(; i < fin; i++){
+        try {
+          const parts = parseCsvLine(dataLines[i]);
+          if(parts.length < 3){ errores.push(dataLines[i]); continue; }
+          const codigo = (parts[0] || '').trim();
+          const categoria = (parts[1] || '').trim();
+          const descripcion = (parts[2] || '').trim();
+          if(!codigo){ errores.push(dataLines[i]); continue; }
+          const producto = porCodigo.get(codigo);
+          if(!producto){ noEncontrados.push(codigo); continue; }
+          if(categoria) producto.categoria = categoria;
+          if(descripcion) producto.descripcion = descripcion;
+          actualizados++;
+        } catch(err) {
+          errores.push(`${dataLines[i]} (error: ${String(err && err.message || err)})`);
+        }
+      }
+      resultEl.innerHTML = `<p class="small">Procesando... ${i} de ${dataLines.length}</p>`;
+      if(i < dataLines.length){
+        setTimeout(procesarTanda, 0);
+        return;
+      }
+
+      let errorFinal = '';
+      try {
+        if(actualizados > 0){
+          markDirty();
+          rebuildIndexes();
+          renderTable();
+        }
+      } catch(err) {
+        errorFinal = `<p style="color:#b23b2e;"><b>Se actualizó en memoria pero falló al refrescar la tabla:</b> ${String(err && err.message || err).replace(/</g,'&lt;').replace(/>/g,'&gt;')}. Los datos igual quedaron aplicados — probá cerrar esta ventana y mirar la tabla.</p>`;
+      }
+      if(btn){ btn.disabled = false; btn.textContent = 'Procesar archivo'; }
+      resultEl.innerHTML = `
+        <p><b>${actualizados}</b> producto(s) actualizados en la lista (todavía no publicado — falta "Guardar todos los cambios").</p>
+        ${noEncontrados.length ? `<p style="color:#b23b2e;"><b>${noEncontrados.length}</b> código(s) del CSV no existen en la app, no se tocaron:</p><textarea readonly style="width:100%;height:90px;">${noEncontrados.join(', ')}</textarea>` : ''}
+        ${errores.length ? `<p style="color:#b23b2e;"><b>${errores.length}</b> línea(s) del CSV no se pudieron leer.</p>` : ''}
+        ${errorFinal}
+      `;
+    }
+    setTimeout(procesarTanda, 0);
+  };
+  reader.readAsText(input.files[0], 'utf-8');
 }
 
 function openPriceImportModal(){
