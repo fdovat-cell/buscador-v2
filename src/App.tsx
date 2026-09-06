@@ -61,12 +61,7 @@ const basePath = import.meta.env.BASE_URL;
 // ya no desde el build de Cloudflare Pages: asi se pueden agregar/actualizar
 // fotos sin disparar un rebuild del sitio.
 const IMAGES_BASE_URL = 'https://xxlgsipmocwizhafinwr.supabase.co/storage/v1/object/public/fotos-productos';
-// Parametro que cambia cada 5 minutos para evitar que un navegador se
-// quede mostrando una foto vieja despues de que se reemplaza el archivo en
-// Supabase (mismo nombre de archivo, mismo codigo de articulo: no se toca
-// nada de eso, solo se fuerza a revisar si hay version nueva cada rato).
-const CACHE_BUST_BUCKET = Math.floor(Date.now() / (5 * 60000));
-const assetUrl = (path: string) => `${IMAGES_BASE_URL}/${path.replace(/^\/+/, '').split('/').pop()}?v=${CACHE_BUST_BUCKET}`;
+const assetUrl = (path: string) => `${IMAGES_BASE_URL}/${path.replace(/^\/+/, '').split('/').pop()}`;
 
 // Datos de catálogo (productos, subcategorías, orden de categorías) se sirven
 // desde Supabase Storage, no desde el bundle de Cloudflare Pages: así el admin
@@ -497,7 +492,22 @@ function Home() {
   };
 
   // Botón "atrás" del celular: si hay una ficha abierta, la cierra en vez de salir de la app.
-  // Si no hay nada abierto, primero avisa y recién con un segundo toque deja salir.
+  // Si no, vuelve a la pantalla anterior de navegación (categoría/subcategoría/búsqueda).
+  // Si ya está en la pantalla base, primero avisa y recién con un segundo toque deja salir.
+  type NavState = { expandedCategory: string | null; categoryFilter: string; subcategoryFilter: string; brandFilter: string; search: string };
+
+  const applyNavState = (nav: NavState) => {
+    setExpandedCategory(nav.expandedCategory);
+    setCategoryFilter(nav.categoryFilter);
+    setSubcategoryFilter(nav.subcategoryFilter);
+    setBrandFilter(nav.brandFilter);
+    setDebouncedSearch(nav.search);
+    setVisibleCount(PAGE_SIZE);
+  };
+  const pushNavState = (nav: NavState) => {
+    window.history.pushState({ nav }, '');
+  };
+
   const openSelected = (product: Product) => {
     setSelected(product);
     window.history.pushState({ modal: true }, '');
@@ -512,10 +522,15 @@ function Home() {
   };
   useEffect(() => {
     window.history.pushState({ base: true }, '');
-    const onPopState = () => {
+    const onPopState = (event: PopStateEvent) => {
       if (modalOpenRef.current) {
         modalOpenRef.current = false;
         setSelected(null);
+        return;
+      }
+      const nav = (event.state && event.state.nav) as NavState | undefined;
+      if (nav) {
+        applyNavState(nav);
         return;
       }
       if (exitArmedRef.current) return;
@@ -600,12 +615,10 @@ function Home() {
   useEffect(() => { writeStorage('pelpap-v2-order-note', note); }, [note]);
 
   const sortTouchedRef = useRef(false);
-  // Antes esto era un useEffect que llamaba setSortKey, lo que generaba
-  // una segunda pasada completa de filtrado/orden en cada búsqueda (primero
-  // se recalculaba filteredProducts con el sortKey viejo, después el efecto
-  // cambiaba sortKey y se recalculaba todo de nuevo). Ahora se deriva en el
-  // mismo render, sin estado ni efecto extra.
-  const effectiveSortKey: SortKey = sortTouchedRef.current ? sortKey : (debouncedSearch.trim() ? 'relevance' : 'precio');
+  useEffect(() => {
+    if (sortTouchedRef.current) return;
+    setSortKey(debouncedSearch.trim() ? 'relevance' : 'precio');
+  }, [debouncedSearch]);
 
   const brands = useMemo(() => [...new Set(products.flatMap((item) => item.marcas || []).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [products]);
   const categories = useMemo(() => {
@@ -665,7 +678,7 @@ function Home() {
     // botella real de la búsqueda lenta).
     const withSortValue = matching.map((entry) => {
       let sortValue: number | string;
-      if (effectiveSortKey === 'relevance') {
+      if (sortKey === 'relevance') {
         if (!queryJoined) {
           sortValue = normalize(entry.product.descripcion || '');
         } else if (entry.codigoNorm === queryJoined) {
@@ -674,18 +687,18 @@ function Home() {
           const fields = [entry.codigoNorm, entry.descripcionNorm, ...entry.marcasNorm];
           sortValue = fields.reduce((sum, field, index) => sum + (field === queryJoined ? 100 - index * 5 : field.startsWith(queryJoined) ? 50 - index * 3 : field.includes(queryJoined) ? 10 - index : 0), 0);
         }
-      } else if (effectiveSortKey === 'precio') {
+      } else if (sortKey === 'precio') {
         sortValue = getPrice(entry.product, overrides);
-      } else if (effectiveSortKey === 'marca') {
+      } else if (sortKey === 'marca') {
         sortValue = normalize([...(entry.product.marcas || [])].sort((x, y) => x.localeCompare(y, 'es'))[0] || '');
       } else {
-        sortValue = normalize(String(entry.product[effectiveSortKey] || ''));
+        sortValue = normalize(String(entry.product[sortKey] || ''));
       }
       return { entry, sortValue };
     });
 
     withSortValue.sort((a, b) => {
-      if (effectiveSortKey === 'relevance' && queryJoined) {
+      if (sortKey === 'relevance' && queryJoined) {
         return (b.sortValue as number) - (a.sortValue as number);
       }
       const left = a.sortValue; const right = b.sortValue;
@@ -694,7 +707,7 @@ function Home() {
     });
 
     return withSortValue.map(({ entry }) => entry.product);
-  }, [searchIndex, debouncedSearch, brandFilter, categoryFilter, subcategoryFilter, effectiveSortKey, ascending, overrides]);
+  }, [searchIndex, debouncedSearch, brandFilter, categoryFilter, subcategoryFilter, sortKey, ascending, overrides]);
 
   const visibleProducts = filteredProducts.slice(0, visibleCount);
   const hasActiveQuery = debouncedSearch.trim() !== '' || brandFilter !== 'all' || categoryFilter !== 'all' || subcategoryFilter !== 'all';
@@ -705,6 +718,8 @@ function Home() {
   const imageCount = useMemo(() => products.filter((product) => product.imagenes?.length).length, [products]);
 
   const updateSearch = (value: string) => {
+    const wasSearching = Boolean(debouncedSearch.trim());
+    const willSearch = Boolean(value.trim());
     startTransition(() => {
       setDebouncedSearch(value);
       setVisibleCount(PAGE_SIZE);
@@ -713,23 +728,31 @@ function Home() {
       // la búsqueda se combinaba con el filtro previo (con "Y"), así que
       // si el término no pertenecía a esa categoría/marca daba "no hay
       // ninguna" aunque el producto existiera en otro lado del catálogo.
-      if (value.trim()) {
+      if (willSearch) {
         setBrandFilter('all');
         setCategoryFilter('all');
         setSubcategoryFilter('all');
         setExpandedCategory(null);
       }
     });
+    // Solo empujamos un paso de historial al ENTRAR a modo búsqueda (de
+    // no-búsqueda a búsqueda) o al SALIR de él del todo — no en cada
+    // letra tipeada mientras ya se está buscando, para no llenar el
+    // historial de "atrás" con cada corrección de la búsqueda.
+    if (willSearch !== wasSearching) {
+      pushNavState({ expandedCategory: willSearch ? null : expandedCategory, categoryFilter: willSearch ? 'all' : categoryFilter, subcategoryFilter: willSearch ? 'all' : subcategoryFilter, brandFilter: willSearch ? 'all' : brandFilter, search: value });
+    }
   };
-  const resetFilters = () => { updateSearch(''); setBrandFilter('all'); setCategoryFilter('all'); setSubcategoryFilter('all'); setExpandedCategory(null); setSortKey('precio'); setAscending(true); sortTouchedRef.current = false; };
-  const clearCategorySelection = () => { setCategoryFilter('all'); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(PAGE_SIZE); };
+  const resetFilters = () => { updateSearch(''); setBrandFilter('all'); setCategoryFilter('all'); setSubcategoryFilter('all'); setExpandedCategory(null); setSortKey('precio'); setAscending(true); sortTouchedRef.current = false; pushNavState({ expandedCategory: null, categoryFilter: 'all', subcategoryFilter: 'all', brandFilter: 'all', search: '' }); };
+  const clearCategorySelection = () => { setCategoryFilter('all'); setSubcategoryFilter('all'); setExpandedCategory(null); setVisibleCount(PAGE_SIZE); pushNavState({ expandedCategory: null, categoryFilter: 'all', subcategoryFilter: 'all', brandFilter, search: '' }); };
   const chooseCategory = (category: CategorySummary) => {
     updateSearch('');
     setBrandFilter('all');
     setSubcategoryFilter('all');
     setExpandedCategory(category.label);
-    if (!category.subcategories.length) setCategoryFilter(category.label);
-    else setCategoryFilter('all');
+    const nextCategoryFilter = category.subcategories.length ? 'all' : category.label;
+    setCategoryFilter(nextCategoryFilter);
+    pushNavState({ expandedCategory: category.label, categoryFilter: nextCategoryFilter, subcategoryFilter: 'all', brandFilter: 'all', search: '' });
   };
   const chooseSubcategory = (category: CategorySummary, subcategory: Subcategory) => {
     updateSearch('');
@@ -738,6 +761,7 @@ function Home() {
     setCategoryFilter(category.label);
     setSubcategoryFilter(subcategory.id);
     setVisibleCount(PAGE_SIZE);
+    pushNavState({ expandedCategory: category.label, categoryFilter: category.label, subcategoryFilter: subcategory.id, brandFilter: 'all', search: '' });
   };
   const addToOrder = (product: Product) => {
     setOrder((current) => { const existing = current[product.codigo]; return { ...current, [product.codigo]: { product, quantity: (existing?.quantity || 0) + 1 } }; });
@@ -810,7 +834,7 @@ function Home() {
               <span style={{ fontSize: 11, fontWeight: 800, color: 'hsl(213 11% 46%)', whiteSpace: 'nowrap' }}>Ordenar por:</span>
               <label className="select-wrap" style={{ minWidth: 190 }}>
                 <select
-                  value={`${effectiveSortKey}-${ascending ? 'asc' : 'desc'}`}
+                  value={`${sortKey}-${ascending ? 'asc' : 'desc'}`}
                   onChange={(event) => {
                     sortTouchedRef.current = true;
                     const [key, direction] = event.target.value.split('-') as [SortKey, 'asc' | 'desc'];
