@@ -520,8 +520,10 @@ function Home() {
       setSelected(null);
     }
   };
+  const BASE_NAV: NavState = { expandedCategory: null, categoryFilter: 'all', subcategoryFilter: 'all', brandFilter: 'all', search: '' };
+
   useEffect(() => {
-    window.history.pushState({ base: true }, '');
+    window.history.pushState({ nav: BASE_NAV }, '');
     const onPopState = (event: PopStateEvent) => {
       if (modalOpenRef.current) {
         modalOpenRef.current = false;
@@ -533,10 +535,13 @@ function Home() {
         applyNavState(nav);
         return;
       }
+      // Acá ya no queda ninguna pantalla propia de la app a la que volver
+      // (se acabó nuestra pila de historial) — recién ahí avisamos antes
+      // de dejar salir de verdad.
       if (exitArmedRef.current) return;
       exitArmedRef.current = true;
       notify('Tocá atrás de nuevo para salir');
-      window.history.pushState({ base: true }, '');
+      window.history.pushState({ nav: BASE_NAV }, '');
       if (exitArmedTimer.current) window.clearTimeout(exitArmedTimer.current);
       exitArmedTimer.current = window.setTimeout(() => { exitArmedRef.current = false; }, 2000);
     };
