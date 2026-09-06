@@ -142,12 +142,13 @@
 
         <div class="card" style="margin-top:14px;background:#faf8f3;">
           <label>Fusionar varias categorías tildadas en una sola</label>
-          <p class="small" style="margin-top:0;">Usalo solo cuando tenés dos o más categorías tildadas arriba que en realidad son la misma cosa (ej: "Cuadernos" y "cuadernos ").</p>
+          <p class="small" style="margin-top:0;">"Fusionar" usalo solo cuando las tildadas son en realidad la misma cosa (ej: "Cuadernos" y "cuadernos "). "Unificar (cada una como subcategoría)" es distinto: junta varias categorías bajo una sola categoría nueva, pero conserva cada nombre original como subcategoría adentro (ej: "Papel Kraft", "Papel Seda", etc. pasan a ser subcategorías de "Papeles").</p>
           <div class="row">
             <div><select id="cat-new-name-select" onchange="handleCatNewNameSelect()"></select>
               <input type="text" id="cat-new-name" placeholder="Escribí el nombre nuevo" style="margin-top:6px;display:none;" />
             </div>
             <div style="flex:0 0 auto;"><button class="btn-stamp" onclick="applyCategoryMerge()">Fusionar seleccionadas</button></div>
+            <div style="flex:0 0 auto;"><button class="btn-stamp" onclick="applyCategoryMergeAsSubcategories()">Unificar (cada una como subcategoría)</button></div>
             <div style="flex:0 0 auto;"><button class="btn-danger" onclick="applyCategoryClear()">Vaciar (dejar sin categoría)</button></div>
           </div>
           <p class="small" id="cat-selected-count" style="margin-top:8px;"></p>
@@ -734,6 +735,59 @@ function deleteEmptyCategory(name){
   renderCategoryManager();
   renderSubcategoryManager();
   alert(`Categoría "${name}" eliminada.`);
+}
+
+// Unifica varias categorías (oldNames) en una sola categoría nueva
+// (newName), pero a diferencia de renameCategoryEverywhere, cada
+// categoría vieja se conserva como una SUBCATEGORÍA con su nombre
+// original dentro de la nueva. Útil para agrupar (ej. todos los
+// "Papel X" pasan a ser subcategorías de "Papeles") sin perder la
+// distinción entre cada tipo.
+function renameCategoryAsSubcategories(oldNames, newName){
+  newName = newName.trim();
+  if(!newName || !oldNames.length) return 0;
+
+  let affected = 0;
+  oldNames.forEach(oldName => {
+    if(oldName === '(sin categoría)') return; // no tiene sentido crear una subcategoría "sin categoría"
+    let sub = subcategories.find(item => item.categoria === newName && normalize(item.nombre) === normalize(oldName));
+    if(!sub){
+      sub = { id: createStableSubcategoryId(), categoria: newName, nombre: oldName, activo: true };
+      subcategories.push(sub);
+    } else if(sub.activo === false){
+      sub.activo = true;
+    }
+    products.forEach(p => {
+      const current = (p.categoria || '').toString().trim() || '(sin categoría)';
+      if(current === oldName){
+        p.categoria = newName;
+        p.subcategoria_id = sub.id;
+        affected++;
+      }
+    });
+  });
+
+  const insertAt = categoryOrder.findIndex(name => oldNames.includes(name));
+  categoryOrder = categoryOrder.filter(name => !oldNames.includes(name) && name !== newName);
+  categoryOrder.splice(insertAt === -1 ? categoryOrder.length : insertAt, 0, newName);
+
+  return affected;
+}
+
+function applyCategoryMergeAsSubcategories(){
+  const selected = getSelectedCategories();
+  const newName = document.getElementById('cat-new-name').value.trim();
+  if(!selected.length){ alert('Tildá al menos una categoría.'); return; }
+  if(!newName){ alert('Escribí el nombre nuevo para la categoría unificada.'); return; }
+  if(!confirm(`Se van a crear ${selected.length} subcategoría(s) nueva(s) dentro de "${newName}" (una por cada categoría tildada), y sus productos van a pasar a esa categoría con esa subcategoría asignada. ¿Confirmás?`)) return;
+  const affected = renameCategoryAsSubcategories(selected, newName);
+  markDirty();
+  rebuildIndexes();
+  document.getElementById('cat-new-name').value = '';
+  renderCategoryManager();
+  renderSubcategoryManager();
+  renderTable();
+  alert(`Listo: ${affected} producto(s) pasaron a "${newName}", con ${selected.length} subcategoría(s) nueva(s) creada(s). No olvides guardar los cambios.`);
 }
 
 function applyCategoryMerge(){
