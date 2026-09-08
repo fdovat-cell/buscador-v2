@@ -278,6 +278,7 @@ let subcategories = [];
 let categoryOrder = [];
 let dirty = false;
 let pendingPhotoUploads = {}; // codigo -> {base64, ext}
+let pendingPhotoRenames = {}; // codigoViejo -> codigoNuevo
 let selectedProductCodes = new Set();
 
 async function sha256hex(text){
@@ -1070,7 +1071,8 @@ function openProductForm(idx){
     <div class="modal">
       <h2>${isNew ? 'Nuevo producto' : 'Editar producto'}</h2>
       <label>Código (único)</label>
-      <input id="f-codigo" value="${p.codigo||''}" ${isNew?'':'readonly style="background:#f3f3f3"'} />
+      <input id="f-codigo" value="${p.codigo||''}" />
+      ${isNew ? '' : '<p class="small" style="margin-top:2px;">Si lo cambiás, la foto ya subida se reacomoda sola al guardar (útil para sacar las "/" que rompen la foto).</p>'}
       <label>Descripción</label>
       <input id="f-descripcion" value="${escapeAttr(p.descripcion||'')}" />
       <div class="row">
@@ -1173,10 +1175,13 @@ async function saveProductForm(idx){
   const codigo = document.getElementById('f-codigo').value.trim();
   if(!codigo){ alert('El código es obligatorio.'); return; }
   const isNew = idx === null;
-  if(isNew && products.some(p => p.codigo === codigo)){
+  if(products.some((p, i) => p.codigo === codigo && i !== idx)){
     alert('Ya existe un producto con ese código.');
     return;
   }
+
+  const codigoViejo = isNew ? null : products[idx].codigo;
+  const codigoCambio = !isNew && codigoViejo !== codigo;
   const marcas = document.getElementById('f-marcas').value.split(',').map(s=>s.trim()).filter(Boolean);
   const precioVal = document.getElementById('f-precio').value;
   const precioUnitVal = document.getElementById('f-precio-unitario').value;
@@ -1204,6 +1209,11 @@ async function saveProductForm(idx){
     const file = fileInput.files[0];
     const yaEsWebp = file.type === 'image/webp';
     pendingPhotoUploads[codigo] = yaEsWebp ? file : await convertToWebp(file);
+    newProduct.imagenes = [`/fotos/${codigo}.webp`];
+  } else if(codigoCambio && newProduct.imagenes && newProduct.imagenes[0]){
+    // No se subió foto nueva, pero cambió el código: hay que reubicar la foto
+    // ya existente en Storage del nombre viejo al nuevo, para que no quede huérfana.
+    pendingPhotoRenames[codigoViejo] = codigo;
     newProduct.imagenes = [`/fotos/${codigo}.webp`];
   }
 
@@ -1571,7 +1581,17 @@ function deleteProduct(idx){
 async function commitChanges(){
   const statusEl = document.getElementById('commit-status');
   const hasPendingPhotos = Object.keys(pendingPhotoUploads).length > 0;
+  const hasPendingRenames = Object.keys(pendingPhotoRenames).length > 0;
   try {
+    // 0. reubicar fotos de productos a los que se les cambió el código
+    if(hasPendingRenames){
+      statusEl.innerHTML = '<div class="status info">Reacomodando fotos con código nuevo...</div>';
+      for (const [codigoViejo, codigoNuevo] of Object.entries(pendingPhotoRenames)){
+        await movePhoto(codigoViejo, codigoNuevo);
+      }
+      pendingPhotoRenames = {};
+    }
+
     // 1. subir fotos pendientes a Supabase Storage (instantáneo, sin rebuild)
     if(hasPendingPhotos){
       statusEl.innerHTML = '<div class="status info">Subiendo fotos pendientes...</div>';
@@ -1616,6 +1636,26 @@ async function uploadPhoto(codigo, file){
   if(!res.ok){
     const errBody = await res.json().catch(()=>({}));
     throw new Error(`Foto ${codigo}: ` + (errBody.message||errBody.error||('HTTP '+res.status)));
+  }
+}
+
+async function movePhoto(codigoViejo, codigoNuevo){
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/move`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'apikey': SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      bucketId: IMAGES_BUCKET,
+      sourceKey: `${codigoViejo}.webp`,
+      destinationKey: `${codigoNuevo}.webp`,
+    }),
+  });
+  if(!res.ok){
+    const errBody = await res.json().catch(()=>({}));
+    throw new Error(`No se pudo mover la foto de "${codigoViejo}" a "${codigoNuevo}": ` + (errBody.message||errBody.error||('HTTP '+res.status)));
   }
 }
 
