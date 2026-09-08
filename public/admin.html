@@ -1663,6 +1663,12 @@ window.addEventListener('beforeunload', (e) => {
   if(dirty){ e.preventDefault(); e.returnValue=''; }
 });
 
+// Botón atrás: en vez de sacarte de la app, te manda al buscador.
+history.pushState({ admin: true }, '', location.href);
+window.addEventListener('popstate', function(){
+  window.location.href = '/';
+});
+
 // init
 if(localStorage.getItem(LS_AUTH) === 'ok'){
   document.getElementById('app-screen').style.display='block';
