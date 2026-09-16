@@ -619,6 +619,64 @@ function Home() {
   useEffect(() => { writeStorage('pelpap-v2-order', JSON.stringify(order)); }, [order]);
   useEffect(() => { writeStorage('pelpap-v2-order-note', note); }, [note]);
 
+  // Precarga en segundo plano de TODAS las fotos del catálogo, una sola vez
+  // (y de las que se agreguen después). Sin esto, el Service Worker solo
+  // guardaba la foto de un producto cuando esa foto se llegaba a mostrar en
+  // pantalla, así que abrir la app sin conexión solo mostraba lo que ya se
+  // había visto antes. Se guarda un registro en localStorage de qué fotos
+  // ya se pidieron, para no volver a bajar 3000+ fotos cada vez que se abre
+  // la app con internet.
+  useEffect(() => {
+    if (!products.length) return;
+    let cancelled = false;
+    (async () => {
+      const storage = getSafeStorage();
+      const trackingKey = 'pelpap-v2-photos-warmed';
+      let warmed: Record<string, true> = {};
+      try {
+        warmed = storage ? (JSON.parse(storage.getItem(trackingKey) || '{}') as Record<string, true>) : {};
+      } catch {
+        warmed = {};
+      }
+      const allPhotos = Array.from(new Set(products.flatMap((product) => product.imagenes || []).filter(Boolean)));
+      const pending = allPhotos.filter((photo) => !warmed[photo]);
+      if (!pending.length) return;
+      let index = 0;
+      let sinceSave = 0;
+      const CONCURRENCY = 6;
+      const persist = () => {
+        try {
+          storage?.setItem(trackingKey, JSON.stringify(warmed));
+        } catch {
+          // Almacenamiento no disponible: la precarga sigue funcionando en esta sesión, solo no queda registrada.
+        }
+      };
+      const worker = async () => {
+        while (!cancelled && index < pending.length) {
+          const photo = pending[index++];
+          try {
+            // mode: 'no-cors' porque Supabase Storage no siempre expone
+            // headers CORS para lectura; igual alcanza para que el Service
+            // Worker intercepte el pedido y guarde la respuesta en caché.
+            await fetch(assetUrl(photo), { mode: 'no-cors' });
+            warmed[photo] = true;
+            if (++sinceSave >= 25) {
+              sinceSave = 0;
+              persist();
+            }
+          } catch {
+            // Sin conexión o falló esta foto puntual: se reintenta la próxima vez que haya internet.
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+      if (!cancelled) persist();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [products]);
+
   const sortTouchedRef = useRef(false);
   useEffect(() => {
     if (sortTouchedRef.current) return;
