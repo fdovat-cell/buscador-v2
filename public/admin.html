@@ -104,6 +104,8 @@
           <button class="btn-stamp" onclick="openNewProduct()">+ Nuevo producto</button>
           <button class="btn-ghost" onclick="openBulkMoveModal()">Mover / recategorizar seleccionados</button>
           <button class="btn-ghost" onclick="clearProductSelection()">Limpiar selección</button>
+          <button class="btn-danger" onclick="deleteSelectedProducts()">Eliminar seleccionados</button>
+          <button class="btn-danger" onclick="deleteByProveedor()">Eliminar por proveedor...</button>
           <button class="btn-ghost" onclick="openPriceImportModal()">Actualizar precios (CSV)</button>
           <button class="btn-ghost" onclick="openCatDescImportModal()">Actualizar categoría/descripción (CSV)</button>
           <button class="btn-primary" onclick="loadCatalog(true)">Recargar catálogo</button>
@@ -1576,6 +1578,42 @@ function deleteProduct(idx){
   rebuildIndexes();
   closeModal();
   renderTable();
+}
+
+function removeProductsByCodes(codes){
+  const set = new Set(codes);
+  products = products.filter(p => !set.has(p.codigo));
+  codes.forEach(c => { selectedProductCodes.delete(c); delete pendingPhotoUploads[c]; });
+  markDirty();
+  rebuildIndexes();
+  renderTable();
+  if(document.getElementById('tab-categorias').style.display !== 'none') renderCategoryManager();
+  if(document.getElementById('tab-subcategorias').style.display !== 'none') renderSubcategoryManager();
+}
+
+function deleteSelectedProducts(){
+  const codes = products.filter(p => selectedProductCodes.has(p.codigo)).map(p => p.codigo);
+  if(!codes.length){ alert('Tildá al menos un producto en la tabla.'); return; }
+  if(!confirm(`¿Eliminar ${codes.length} producto(s) tildados de la lista? Las fotos quedan en el almacenamiento, pero no se van a ver en el buscador.`)) return;
+  removeProductsByCodes(codes);
+  alert(`${codes.length} producto(s) eliminados de la lista. Tocá "Guardar todos los cambios en GitHub" para publicarlo.`);
+}
+
+function deleteByProveedor(){
+  const counts = {};
+  products.forEach(p => {
+    const k = p.proveedor != null && p.proveedor !== '' ? String(p.proveedor) : '(sin proveedor)';
+    counts[k] = (counts[k] || 0) + 1;
+  });
+  const resumen = Object.entries(counts).sort((a,b)=>a[0].localeCompare(b[0],'es',{numeric:true})).map(([k,n]) => `${k}: ${n}`).join('\n');
+  const ans = prompt(`¿Qué proveedor querés eliminar? Escribí el número.\n\nProveedores actuales (número: cantidad de productos)\n${resumen}`);
+  if(ans === null) return;
+  const num = ans.trim();
+  if(!num || !(num in counts) || num === '(sin proveedor)'){ alert('Ese número de proveedor no existe en el catálogo.'); return; }
+  const codes = products.filter(p => String(p.proveedor) === num).map(p => p.codigo);
+  if(!confirm(`Vas a eliminar los ${codes.length} productos del proveedor ${num}. Quedarían ${products.length - codes.length} productos. ¿Seguir?`)) return;
+  removeProductsByCodes(codes);
+  alert(`${codes.length} producto(s) del proveedor ${num} eliminados de la lista. Tocá "Guardar todos los cambios en GitHub" para publicarlo.`);
 }
 
 async function commitChanges(){
